@@ -217,7 +217,7 @@ TEST_F(CollectionTest, Feature_CreateAndOpen_PathValidate) {
   auto schema = TestHelper::CreateNormalSchema();
 
   {
-    std::vector<std::string> valid_paths = {"abc",
+    std::vector<std::string> valid_paths = {"你好",
                                             "data123",
                                             "my_collection",
                                             "v1.2_alpha-beta",
@@ -235,10 +235,13 @@ TEST_F(CollectionTest, Feature_CreateAndOpen_PathValidate) {
       auto result = Collection::CreateAndOpen(path, *schema, options);
       if (!result.has_value()) {
         std::cout << result.error().message() << std::endl;
+        std::cout << "File error:" << ailego::FileHelper::GetLastErrorString()
+                  << std::endl;
       }
       ASSERT_TRUE(result.has_value());
 
       result.value()->Destroy();
+      // exit(0);
     }
   }
 
@@ -2110,7 +2113,8 @@ TEST_F(CollectionTest, Feature_CreateIndex_Vector) {
 
 TEST_F(CollectionTest, Feature_CreateIndex_Scalar) {
 #ifdef __ANDROID__
-  GTEST_SKIP() << "Skipped on Android: emulator filesystem lacks hardlink support (needed by RocksDB checkpoint)";
+  GTEST_SKIP() << "Skipped on Android: emulator filesystem lacks hardlink "
+                  "support (needed by RocksDB checkpoint)";
 #endif
   auto func = [&](std::string field_name, bool enable_optimize,
                   IndexParams::Ptr scalar_index_params = nullptr) {
@@ -2387,7 +2391,8 @@ TEST_F(CollectionTest, Feature_DropIndex_Vector) {
 
 TEST_F(CollectionTest, Feature_DropIndex_Scalar) {
 #ifdef __ANDROID__
-  GTEST_SKIP() << "Skipped on Android: emulator filesystem lacks hardlink support (needed by RocksDB checkpoint)";
+  GTEST_SKIP() << "Skipped on Android: emulator filesystem lacks hardlink "
+                  "support (needed by RocksDB checkpoint)";
 #endif
   auto func = [&](std::string field_name, bool enable_optimize) {
     FileHelper::RemoveDirectory(col_path);
