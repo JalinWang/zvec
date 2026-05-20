@@ -116,7 +116,8 @@ struct Norm1Matrix<
   }
 };
 
-#if defined(__SSE__) || (defined(__ARM_NEON) && defined(__aarch64__))
+#if defined(__SSE__) || ((defined(__ARM_NEON) || defined(_M_ARM64)) && \
+                         (defined(__aarch64__) || defined(_M_ARM64)))
 /*! L1-Norm Matrix (FP32, M=1)
  */
 template <>
@@ -129,6 +130,8 @@ struct Norm1Matrix<float, 1> {
 };
 #endif  // __SSE__ || (__ARM_NEON && __aarch64__)
 
+// MSVC ARM64 lacks `float16_t` without ARMv8.2 FP16; gate FP16 NEON
+// specialization to gcc/clang aarch64.
 #if (defined(__F16C__) && defined(__AVX__)) || \
     (defined(__ARM_NEON) && defined(__aarch64__))
 /*! L1-Norm Matrix (FP16, M=1)

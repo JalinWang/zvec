@@ -18,7 +18,7 @@
 namespace zvec {
 namespace ailego {
 
-#if defined(__ARM_NEON)
+#if (defined(__ARM_NEON) || defined(_M_ARM64))
 float InnerProductAndSquaredNormFp32NEON(const float *lhs, const float *rhs,
                                          size_t size, float *sql, float *sqr);
 #endif
@@ -98,7 +98,7 @@ void MipsSquaredEuclideanDistanceMatrix<float, 1, 1>::Compute(
 void MipsSquaredEuclideanDistanceMatrix<float, 1, 1>::Compute(
     const ValueType *p, const ValueType *q, size_t dim, size_t m, float e2,
     float *out) {
-#if defined(__ARM_NEON)
+#if (defined(__ARM_NEON) || defined(_M_ARM64))
   float u2{0.0f};
   float v2{0.0f};
   float sum = InnerProductAndSquaredNormFp32NEON(p, q, dim, &u2, &v2);

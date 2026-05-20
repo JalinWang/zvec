@@ -20,7 +20,7 @@ namespace ailego {
 //--------------------------------------------------
 // Dense
 //--------------------------------------------------
-#if defined(__ARM_NEON)
+#if (defined(__ARM_NEON) || defined(_M_ARM64))
 float InnerProductFp32NEON(const float *lhs, const float *rhs, size_t size);
 float MinusInnerProductFp32NEON(const float *lhs, const float *rhs,
                                 size_t size);
@@ -49,7 +49,7 @@ float MinusInnerProductFp32Scalar(const float *lhs, const float *rhs,
 //! Compute the distance between matrix and query (FP32, M=1, N=1)
 void InnerProductMatrix<float, 1, 1>::Compute(const float *m, const float *q,
                                               size_t dim, float *out) {
-#if defined(__ARM_NEON)
+#if (defined(__ARM_NEON) || defined(_M_ARM64))
   *out = InnerProductFp32NEON(m, q, dim);
 #else
 #if defined(__AVX512F__)
@@ -80,7 +80,7 @@ void InnerProductMatrix<float, 1, 1>::Compute(const float *m, const float *q,
 void MinusInnerProductMatrix<float, 1, 1>::Compute(const float *m,
                                                    const float *q, size_t dim,
                                                    float *out) {
-#if defined(__ARM_NEON)
+#if (defined(__ARM_NEON) || defined(_M_ARM64))
   *out = MinusInnerProductFp32NEON(m, q, dim);
 #else
 #if defined(__AVX512F__)

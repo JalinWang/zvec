@@ -22,7 +22,10 @@
 // #define float32(x) _cvtsh_ss(x)
 // #endif  // __F16C__ && __AVX__
 
-#if defined(__aarch64__)
+// MSVC ARM64 lacks the GCC/Clang `__fp16` extension type, so keep this
+// path gated on `__aarch64__` (predefined only by GCC/Clang on AArch64).
+// MSVC ARM64 falls through to the F16C/scalar paths below.
+#if defined(__aarch64__) && !defined(_MSC_VER)
 static inline float float32(uint16_t val) {
   __fp16 f;
   memcpy(&f, &val, sizeof(val));

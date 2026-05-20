@@ -52,7 +52,10 @@ struct FloatHelper {
   }
 };
 
-#if !defined(__aarch64__)
+// The `#else` branch below stores `Float16::value_` as `__fp16` — a GCC/Clang
+// extension type that MSVC does not provide even on ARM64. Keep the uint16_t
+// storage path for MSVC (including MSVC ARM64) so the wrapper compiles.
+#if !defined(__aarch64__) || defined(_MSC_VER)
 /*! Half-Precision Floating Point
  */
 class Float16 {

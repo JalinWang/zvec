@@ -52,6 +52,8 @@ namespace ailego {
 //! Calculate sum of squared (NEON)
 #define SS_FP16_NEON(v_m, v_sum) v_sum = vfmaq_f16(v_sum, v_m, v_m);
 
+// MSVC ARM64 lacks `float16_t` without ARMv8.2 FP16, so the NEON FP16
+// kernel is gated to gcc/clang aarch64.
 #if (defined(__F16C__) && defined(__AVX__)) || \
     (defined(__ARM_NEON) && defined(__aarch64__))
 //! Compute the L2-norm of vectors (FP16, M=1)

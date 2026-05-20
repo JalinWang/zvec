@@ -67,6 +67,9 @@ static const __m512 ABS_MASK_FP32_AVX512 =
 //! Calculate sum of absolute (NEON)
 #define SA_FP16_NEON(v_m, v_sum) v_sum = vaddq_f16(vabsq_f16(v_m), v_sum);
 
+// MSVC ARM64 lacks `float16_t` without ARMv8.2 FP16, so the NEON FP16
+// kernel is gated to gcc/clang aarch64. The generic Float16 path is used
+// on MSVC ARM64.
 #if (defined(__F16C__) && defined(__AVX__)) || \
     (defined(__ARM_NEON) && defined(__aarch64__))
 //! Compute the L1-norm of vectors (FP16, M=1)

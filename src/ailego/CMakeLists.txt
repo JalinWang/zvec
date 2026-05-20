@@ -112,6 +112,13 @@ if(NOT ANDROID AND AUTO_DETECT_ARCH)
                   COMPILE_FLAGS "${MATH_MARCH_FLAG_NEON}"
               )
             endforeach()
+        else()
+            # MSVC on ARM64: NEON is the ARMv8 baseline and is always enabled,
+            # so no `-march` flag is required (MSVC does not accept GCC-style
+            # `-march=` anyway). The NEON math kernels still get compiled via
+            # the ALL_SRCS glob above; their `#if defined(__ARM_NEON)` guards
+            # were extended in this PR to also accept `_M_ARM64` so the bodies
+            # actually emit code under MSVC.
         endif()
     endif()
 endif()

@@ -30,13 +30,16 @@
 
 #if defined(_MSC_VER)
 #include <intrin.h>
+#if defined(_M_ARM64)
+#include <arm_neon.h>
+#endif
 #else
 #include <strings.h>
 #include <unistd.h>
 #if defined(__x86_64__) || defined(__i386)
 #include <x86intrin.h>
 #endif
-#if defined(__ARM_NEON)
+#if (defined(__ARM_NEON) || defined(_M_ARM64))
 #include <arm_neon.h>
 #endif
 #if defined(__ARM_FEATURE_CRC32)
@@ -111,7 +114,8 @@ extern "C" {
 #endif
 
 #if defined(__GNUC__)
-#if defined(__x86_64__) || defined(__aarch64__) || defined(__ppc64__)
+#if defined(__x86_64__) || (defined(__aarch64__) || defined(_M_ARM64)) || \
+    defined(__ppc64__)
 #define AILEGO_M64
 #else
 #define AILEGO_M32
@@ -236,10 +240,12 @@ static inline int ailego_clz64(uint64_t x) {
 #define ailego_popcount ailego_popcount32
 #endif  // AILEGO_M64
 
-#if defined(__arm__) || defined(__aarch64__)
+#if defined(__arm__) || (defined(__aarch64__) || defined(_M_ARM64))
 // ARMv7 Architecture Reference Manual (for YIELD)
 // ARM Compiler toolchain Compiler Reference (for __yield() instrinsic)
-#if defined(__CC_ARM)
+#if defined(__CC_ARM) || defined(_MSC_VER)
+// ARM Compiler toolchain and MSVC both expose the intrinsic `__yield()`
+// for the AArch64/ARMv7 YIELD instruction.
 #define ailego_yield() __yield()
 #else
 #define ailego_yield() __asm__ __volatile__("yield")
@@ -281,11 +287,12 @@ static inline int ailego_clz64(uint64_t x) {
 #define ailego_malloc(SIZE) ailego_aligned_malloc((SIZE), 32)
 #elif defined(__SSE__)
 #define ailego_malloc(SIZE) ailego_aligned_malloc((SIZE), 16)
-#elif defined(__ARM_NEON)
+#elif (defined(__ARM_NEON) || defined(_M_ARM64))
 #define ailego_malloc(SIZE) ailego_aligned_malloc((SIZE), 16)
 #endif
 #endif  // !ailego_malloc
-#if (defined(__SSE__) || defined(__ARM_NEON)) && !defined(ailego_free)
+#if (defined(__SSE__) || (defined(__ARM_NEON) || defined(_M_ARM64))) && \
+    !defined(ailego_free)
 #define ailego_free ailego_aligned_free
 #endif
 #endif  // !__SANITIZE_ADDRESS__

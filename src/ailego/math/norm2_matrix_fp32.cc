@@ -43,11 +43,12 @@ namespace ailego {
 //! Calculate sum of squared (NEON)
 #define SS_FP32_NEON(v_m, v_sum) v_sum = vfmaq_f32(v_sum, v_m, v_m);
 
-#if defined(__SSE__) || (defined(__ARM_NEON) && defined(__aarch64__))
+#if defined(__SSE__) || ((defined(__ARM_NEON) || defined(_M_ARM64)) && \
+                         (defined(__aarch64__) || defined(_M_ARM64)))
 //! Compute the L2-norm of vectors (FP32, M=1)
 void Norm2Matrix<float, 1>::Compute(const ValueType *m, size_t dim,
                                     float *out) {
-#if defined(__ARM_NEON)
+#if (defined(__ARM_NEON) || defined(_M_ARM64))
   NORM_FP32_1_NEON(m, dim, out, std::sqrt)
 #else
 #if defined(__AVX512F__)
@@ -69,7 +70,7 @@ void Norm2Matrix<float, 1>::Compute(const ValueType *m, size_t dim,
 //! Compute the squared L2-norm of vectors (FP32, M=1)
 void SquaredNorm2Matrix<float, 1>::Compute(const ValueType *m, size_t dim,
                                            float *out) {
-#if defined(__ARM_NEON)
+#if (defined(__ARM_NEON) || defined(_M_ARM64))
   NORM_FP32_1_NEON(m, dim, out, )
 #else
 #if defined(__AVX512F__)

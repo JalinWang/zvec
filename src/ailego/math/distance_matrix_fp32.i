@@ -26,7 +26,7 @@
   _mm256_insertf128_ps(_mm256_castps128_ps256(b), (a), 1)
 #endif  // __AVX__
 
-#if defined(__ARM_NEON) && !defined(__aarch64__)
+#if (defined(__ARM_NEON) || defined(_M_ARM64)) && !(defined(__aarch64__) || defined(_M_ARM64))
 #define vdupq_laneq_f32(a, b) vdupq_n_f32(vgetq_lane_f32(a, b))
 #endif  // __ARM_NEON && __aarch64__
 
