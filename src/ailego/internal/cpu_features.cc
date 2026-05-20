@@ -15,11 +15,9 @@
 #include "cpu_features.h"
 #include <cstddef>
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
 #include <intrin.h>
-#endif
-
-#if (defined(__x86_64__) || defined(__i386__)) && !defined(_MSC_VER)
+#elif !defined(_MSC_VER) && !defined(__ARM_ARCH) && !defined(__aarch64__)
 #include <cpuid.h>
 #endif
 
@@ -36,7 +34,7 @@ namespace internal {
 
 CpuFeatures::CpuFlags CpuFeatures::flags_;
 
-#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
 CpuFeatures::CpuFlags::CpuFlags(void)
     : L1_ECX(0), L1_EDX(0), L7_EBX(0), L7_ECX(0), L7_EDX(0) {
   int l1[4] = {0, 0, 0, 0};
@@ -50,7 +48,7 @@ CpuFeatures::CpuFlags::CpuFlags(void)
   L7_ECX = l7[2];
   L7_EDX = l7[3];
 }
-#elif defined(__x86_64__) || defined(__i386__)
+#elif !defined(_MSC_VER) && !defined(__ARM_ARCH) && !defined(__aarch64__)
 CpuFeatures::CpuFlags::CpuFlags(void)
     : L1_ECX(0), L1_EDX(0), L7_EBX(0), L7_ECX(0), L7_EDX(0) {
   uint32_t eax, ebx, ecx, edx;
