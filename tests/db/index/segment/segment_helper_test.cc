@@ -638,6 +638,11 @@ class SegmentCompactReuseTest
         p->set_is_linear(true);
         return p;
       }
+      case IndexType::VAMANA: {
+        auto p = std::make_shared<zvec::VamanaQueryParams>();
+        p->set_is_linear(true);
+        return p;
+      }
       case IndexType::FLAT:
       default:
         return std::make_shared<zvec::FlatQueryParams>();
@@ -770,13 +775,6 @@ INSTANTIATE_TEST_SUITE_P(
                                          QuantizeType::UNDEFINED),
         IndexType::IVF}));
 
-INSTANTIATE_TEST_SUITE_P(Vamana, SegmentCompactReuseTest,
-                         testing::Values(SegmentCompactReuseParam{
-                             std::make_shared<VamanaIndexParams>(
-                                 MetricType::IP, 16, 100, 1.2f, false, false,
-                                 false, QuantizeType::UNDEFINED),
-                             IndexType::VAMANA}));
-
 #if RABITQ_SUPPORTED
 INSTANTIATE_TEST_SUITE_P(HnswRabitq, SegmentCompactReuseTest,
                          testing::Values(SegmentCompactReuseParam{
@@ -784,6 +782,13 @@ INSTANTIATE_TEST_SUITE_P(HnswRabitq, SegmentCompactReuseTest,
                                  MetricType::IP, 7, 256, 16, 200, 0),
                              IndexType::HNSW_RABITQ}));
 #endif
+
+INSTANTIATE_TEST_SUITE_P(Vamana, SegmentCompactReuseTest,
+                         testing::Values(SegmentCompactReuseParam{
+                             std::make_shared<VamanaIndexParams>(
+                                 MetricType::IP, 16, 100, 1.2f, false, false,
+                                 false, QuantizeType::UNDEFINED),
+                             IndexType::VAMANA}));
 
 TEST_F(SegmentHelperTest, CompactTask_FilterMultiSegmentsRegression) {
   auto schema = test::TestHelper::CreateSchemaWithVectorIndex();
