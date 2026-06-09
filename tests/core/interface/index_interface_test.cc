@@ -291,6 +291,49 @@ TEST(IndexInterface, CopyOnWrite) {
       ASSERT_EQ(0, index->Close());
     }
 
+    // Phase 5: open in kPrivatePersistent (file opened writable, MAP_PRIVATE,
+    // flush pwrites dirty private pages back). Without performing writes the
+    // close path still exercises the pwrite branch with no dirty pages, which
+    // must not corrupt the file.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(0, index->Open(index_name,
+                               {StorageOptions::StorageType::kMMAP,
+                                /*create_new=*/false, /*read_only=*/true,
+                                StorageOptions::MmapMode::kPrivatePersistent}));
+
+      auto target = make_vec(21);
+      VectorData query;
+      query.vector = DenseVector{target.data()};
+      SearchResult result;
+      ASSERT_EQ(0, index->Search(query, query_param, &result));
+      ASSERT_FALSE(result.doc_list_.empty());
+      ASSERT_EQ(121u, result.doc_list_[0].key());
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Phase 6: reopen with kShared to confirm Phase 5's writable open/close
+    // left the file intact.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(
+          0, index->Open(index_name, {StorageOptions::StorageType::kMMAP,
+                                      /*create_new=*/false, /*read_only=*/true,
+                                      StorageOptions::MmapMode::kShared}));
+      for (uint32_t i = 0; i < kNumVectors; ++i) {
+        auto target = make_vec(i);
+        VectorData query;
+        query.vector = DenseVector{target.data()};
+        SearchResult result;
+        ASSERT_EQ(0, index->Search(query, query_param, &result));
+        ASSERT_FALSE(result.doc_list_.empty());
+        ASSERT_EQ(100u + i, result.doc_list_[0].key());
+      }
+      ASSERT_EQ(0, index->Close());
+    }
+
     zvec::test_util::RemoveTestFiles(index_name);
   };
 
@@ -329,6 +372,81 @@ TEST(IndexInterface, CopyOnWrite) {
            .with_fetch_vector(false)
            .with_ef_search(32)
            .build());
+
+  // Flat-only durability check for kPrivatePersistent: writes performed under
+  // MAP_PRIVATE must be pwrite-flushed back and visible after a kShared
+  // reopen. Flat is used because Add/Flush against a previously-built file is
+  // straightforward to reason about for this storage layer.
+  {
+    const std::string persist_index{"test_cow_persist.index"};
+    zvec::test_util::RemoveTestFiles(persist_index);
+    auto persist_param = FlatIndexParamBuilder()
+                             .WithMetricType(MetricType::kInnerProduct)
+                             .WithDataType(DataType::DT_FP32)
+                             .WithDimension(kDimension)
+                             .WithIsSparse(false)
+                             .Build();
+    auto persist_query =
+        FlatQueryParamBuilder().with_topk(5).with_fetch_vector(false).build();
+
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*persist_param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(0, index->Open(persist_index,
+                               {StorageOptions::StorageType::kMMAP,
+                                /*create_new=*/true, /*read_only=*/false,
+                                StorageOptions::MmapMode::kShared}));
+      auto v0 = make_vec(0);
+      VectorData vd;
+      vd.vector = DenseVector{v0.data()};
+      ASSERT_EQ(0, index->Add(vd, /*key=*/500));
+      ASSERT_EQ(0, index->Train());
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Add a new vector through kPrivatePersistent and explicitly Flush so
+    // dirty private pages are written back to the file.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*persist_param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(0, index->Open(persist_index,
+                               {StorageOptions::StorageType::kMMAP,
+                                /*create_new=*/false, /*read_only=*/false,
+                                StorageOptions::MmapMode::kPrivatePersistent}));
+      auto v1 = make_vec(1);
+      VectorData vd;
+      vd.vector = DenseVector{v1.data()};
+      ASSERT_EQ(0, index->Add(vd, /*key=*/501));
+      ASSERT_EQ(0, index->Flush());
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Reopen with kShared: the entry written in kPrivatePersistent must be
+    // durable on disk.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*persist_param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(0, index->Open(persist_index,
+                               {StorageOptions::StorageType::kMMAP,
+                                /*create_new=*/false, /*read_only=*/true,
+                                StorageOptions::MmapMode::kShared}));
+      auto target = make_vec(1);
+      VectorData query;
+      query.vector = DenseVector{target.data()};
+      SearchResult result;
+      ASSERT_EQ(0, index->Search(query, persist_query, &result));
+      ASSERT_FALSE(result.doc_list_.empty());
+      ASSERT_EQ(501u, result.doc_list_[0].key());
+
+      VectorDataBuffer fetched;
+      ASSERT_EQ(0, index->Fetch(501, &fetched));
+      auto *fetched_ptr = reinterpret_cast<const float *>(
+          std::get<DenseVectorBuffer>(fetched.vector_buffer).data.data());
+      ASSERT_FLOAT_EQ(1.0f, fetched_ptr[1 % kDimension]);
+      ASSERT_EQ(0, index->Close());
+    }
+    zvec::test_util::RemoveTestFiles(persist_index);
+  }
 }
 
 TEST(IndexInterface, BufferGeneral) {
