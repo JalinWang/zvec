@@ -186,6 +186,151 @@ TEST(IndexInterface, General) {
            .build());
 }
 
+TEST(IndexInterface, CopyOnWrite) {
+  constexpr uint32_t kDimension = 64;
+  constexpr uint32_t kNumVectors = 50;
+  const std::string index_name{"test_cow.index"};
+
+  auto make_vec = [&](uint32_t seed) {
+    std::vector<float> v(kDimension, 0.0f);
+    v[seed % kDimension] = 1.0f;
+    return v;
+  };
+
+  auto func = [&](const BaseIndexParam::Pointer &param,
+                  const BaseIndexQueryParam::Pointer &query_param) {
+    zvec::test_util::RemoveTestFiles(index_name);
+
+    // Phase 1: build the index with kShared (writeable shared mapping)
+    // since the private modes can't be used as the initial ingest path here.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(
+          0, index->Open(index_name, {StorageOptions::StorageType::kMMAP,
+                                      /*create_new=*/true, /*read_only=*/false,
+                                      StorageOptions::MmapMode::kShared}));
+
+      std::vector<std::vector<float>> vecs;
+      vecs.reserve(kNumVectors);
+      for (uint32_t i = 0; i < kNumVectors; ++i) {
+        vecs.emplace_back(make_vec(i));
+        VectorData vd;
+        vd.vector = DenseVector{vecs.back().data()};
+        ASSERT_EQ(0, index->Add(vd, /*key=*/100 + i));
+      }
+      ASSERT_EQ(0, index->Train());
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Phase 2: reopen with kPrivateEphemeral (read-only file, MAP_PRIVATE).
+    // Search and Fetch must succeed against the persisted file.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(0, index->Open(index_name,
+                               {StorageOptions::StorageType::kMMAP,
+                                /*create_new=*/false, /*read_only=*/true,
+                                StorageOptions::MmapMode::kPrivateEphemeral}));
+
+      for (uint32_t i = 0; i < kNumVectors; ++i) {
+        auto target = make_vec(i);
+        VectorData query;
+        query.vector = DenseVector{target.data()};
+        SearchResult result;
+        ASSERT_EQ(0, index->Search(query, query_param, &result));
+        ASSERT_FALSE(result.doc_list_.empty());
+        ASSERT_EQ(100u + i, result.doc_list_[0].key());
+
+        VectorDataBuffer fetched;
+        ASSERT_EQ(0, index->Fetch(100 + i, &fetched));
+        auto *fetched_ptr = reinterpret_cast<const float *>(
+            std::get<DenseVectorBuffer>(fetched.vector_buffer).data.data());
+        ASSERT_FLOAT_EQ(1.0f, fetched_ptr[i % kDimension]);
+      }
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Phase 3: reopen with kShared to confirm the file is intact after the
+    // private-ephemeral session (no corruption from MAP_PRIVATE remapping).
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(
+          0, index->Open(index_name, {StorageOptions::StorageType::kMMAP,
+                                      /*create_new=*/false, /*read_only=*/true,
+                                      StorageOptions::MmapMode::kShared}));
+
+      auto target = make_vec(13);
+      VectorData query;
+      query.vector = DenseVector{target.data()};
+      SearchResult result;
+      ASSERT_EQ(0, index->Search(query, query_param, &result));
+      ASSERT_FALSE(result.doc_list_.empty());
+      ASSERT_EQ(113u, result.doc_list_[0].key());
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Phase 4: repeated open/close under kPrivateEphemeral must not lose
+    // entries.
+    for (int cycle = 0; cycle < 3; ++cycle) {
+      auto index = IndexFactory::CreateAndInitIndex(*param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(0, index->Open(index_name,
+                               {StorageOptions::StorageType::kMMAP,
+                                /*create_new=*/false, /*read_only=*/true,
+                                StorageOptions::MmapMode::kPrivateEphemeral}));
+      uint32_t i = static_cast<uint32_t>(cycle * 5 + 2);
+      auto target = make_vec(i);
+      VectorData query;
+      query.vector = DenseVector{target.data()};
+      SearchResult result;
+      ASSERT_EQ(0, index->Search(query, query_param, &result));
+      ASSERT_FALSE(result.doc_list_.empty());
+      ASSERT_EQ(100u + i, result.doc_list_[0].key());
+      ASSERT_EQ(0, index->Close());
+    }
+
+    zvec::test_util::RemoveTestFiles(index_name);
+  };
+
+  func(FlatIndexParamBuilder()
+           .WithMetricType(MetricType::kInnerProduct)
+           .WithDataType(DataType::DT_FP32)
+           .WithDimension(kDimension)
+           .WithIsSparse(false)
+           .Build(),
+       FlatQueryParamBuilder().with_topk(5).with_fetch_vector(false).build());
+
+  func(HNSWIndexParamBuilder()
+           .WithMetricType(MetricType::kInnerProduct)
+           .WithDataType(DataType::DT_FP32)
+           .WithDimension(kDimension)
+           .WithIsSparse(false)
+           .WithEFConstruction(100)
+           .Build(),
+       HNSWQueryParamBuilder()
+           .with_topk(5)
+           .with_fetch_vector(false)
+           .with_ef_search(20)
+           .build());
+
+  func(VamanaIndexParamBuilder()
+           .WithMetricType(MetricType::kInnerProduct)
+           .WithDataType(DataType::DT_FP32)
+           .WithDimension(kDimension)
+           .WithIsSparse(false)
+           .WithMaxDegree(32)
+           .WithSearchListSize(64)
+           .WithAlpha(1.2f)
+           .Build(),
+       VamanaQueryParamBuilder()
+           .with_topk(5)
+           .with_fetch_vector(false)
+           .with_ef_search(32)
+           .build());
+}
+
 TEST(IndexInterface, BufferGeneral) {
   zvec::ailego::MemoryLimitPool::get_instance().init(100 * 1024 * 1024);
   constexpr uint32_t kDimension = 64;

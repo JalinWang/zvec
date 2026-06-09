@@ -17,6 +17,7 @@
 #include <zvec/core/framework/index_storage.h>
 #include <zvec/core/interface/index.h>
 #include "mixed_reducer/mixed_reducer_params.h"
+#include "utility/utility_params.h"
 
 namespace zvec::core_interface {
 
@@ -248,6 +249,11 @@ int Index::Open(const std::string &file_path, StorageOptions storage_options) {
   // storage_params.set("proxima.mmap_file.storage.memory_warmup", true);
   // storage_params.set("proxima.mmap_file.storage.segment_meta_capacity",
   // 1024);
+  bool cow = storage_options.mmap_mode != StorageOptions::MmapMode::kShared;
+  bool force_flush =
+      storage_options.mmap_mode == StorageOptions::MmapMode::kPrivatePersistent;
+  storage_params.set(core::MMAPFILE_STORAGE_COPY_ON_WRITE, cow);
+  storage_params.set(core::MMAPFILE_STORAGE_FORCE_FLUSH, force_flush);
   switch (storage_options.type) {
     case StorageOptions::StorageType::kMMAP: {
       storage_ = core::IndexFactory::CreateStorage("MMapFileStorage");

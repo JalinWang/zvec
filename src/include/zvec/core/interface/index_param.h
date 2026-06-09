@@ -38,9 +38,20 @@ class BaseIndexQueryParam;
 struct StorageOptions {
   enum class StorageType { kNone, kMMAP, kMemory, kBufferPool };
 
+  // Mmap mode for kMMAP storage. Only meaningful when type == kMMAP.
+  //   kShared            : MAP_SHARED. Writes through mmap auto-persist to the
+  //                        file. Default. Suitable for online ingest/serving.
+  //   kPrivatePersistent : MAP_PRIVATE backed by a writable file; flush()
+  //                        copies dirty pages back via explicit pwrite.
+  //   kPrivateEphemeral  : MAP_PRIVATE on a read-only file. Writes stay in
+  //                        process memory and never reach disk.
+  enum class MmapMode { kShared, kPrivatePersistent, kPrivateEphemeral };
+
   StorageType type = StorageType::kNone;
   bool create_new = false;
   bool read_only = false;
+
+  MmapMode mmap_mode = MmapMode::kShared;
 };
 
 struct MergeOptions {
