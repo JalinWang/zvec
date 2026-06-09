@@ -312,18 +312,20 @@ ssize_t File::offset(void) const {
 void *File::MemoryMap(NativeHandle handle, ssize_t off, size_t len, int opts) {
   int prot =
       ((opts & File::MMAP_READONLY) ? PROT_READ : PROT_READ | PROT_WRITE);
+  int flags = (opts & File::MMAP_SHARED) ? MAP_SHARED : MAP_PRIVATE;
 
 #if defined(MAP_POPULATE)
   if (opts & File::MMAP_POPULATE) {
-    prot |= MAP_POPULATE;
+    flags |= MAP_POPULATE;
   }
 #endif
-  int flags = (opts & File::MMAP_SHARED) ? MAP_SHARED : MAP_PRIVATE;
+
 #if defined(MAP_HUGETLB)
   if (opts & File::MMAP_HUGE_PAGE) {
     flags |= MAP_HUGETLB;
   }
 #endif
+
   void *addr = mmap(nullptr, len, prot, flags, handle, off);
   ailego_null_if_false(addr != MAP_FAILED);
 
