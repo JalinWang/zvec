@@ -201,15 +201,15 @@ TEST(IndexInterface, CopyOnWrite) {
                   const BaseIndexQueryParam::Pointer &query_param) {
     zvec::test_util::RemoveTestFiles(index_name);
 
-    // Phase 1: build the index with kShared (writeable shared mapping)
-    // since the private modes can't be used as the initial ingest path here.
+    // Phase 1: build the index with shared mmap (writeable shared mapping)
+    // since the COW mode isn't used as the initial ingest path here.
     {
       auto index = IndexFactory::CreateAndInitIndex(*param);
       ASSERT_NE(nullptr, index);
       ASSERT_EQ(
           0, index->Open(index_name, {StorageOptions::StorageType::kMMAP,
                                       /*create_new=*/true, /*read_only=*/false,
-                                      StorageOptions::MmapMode::kShared}));
+                                      /*cow_on_write=*/false}));
 
       std::vector<std::vector<float>> vecs;
       vecs.reserve(kNumVectors);
@@ -223,15 +223,15 @@ TEST(IndexInterface, CopyOnWrite) {
       ASSERT_EQ(0, index->Close());
     }
 
-    // Phase 2: reopen with kPrivateEphemeral (read-only file, MAP_PRIVATE).
-    // Search and Fetch must succeed against the persisted file.
+    // Phase 2: reopen with COW mmap. Search and Fetch must succeed against
+    // the persisted file.
     {
       auto index = IndexFactory::CreateAndInitIndex(*param);
       ASSERT_NE(nullptr, index);
       ASSERT_EQ(0, index->Open(index_name,
                                {StorageOptions::StorageType::kMMAP,
                                 /*create_new=*/false, /*read_only=*/true,
-                                StorageOptions::MmapMode::kPrivateEphemeral}));
+                                /*cow_on_write=*/true}));
 
       for (uint32_t i = 0; i < kNumVectors; ++i) {
         auto target = make_vec(i);
@@ -251,15 +251,15 @@ TEST(IndexInterface, CopyOnWrite) {
       ASSERT_EQ(0, index->Close());
     }
 
-    // Phase 3: reopen with kShared to confirm the file is intact after the
-    // private-ephemeral session (no corruption from MAP_PRIVATE remapping).
+    // Phase 3: reopen with shared mmap to confirm the file is intact after
+    // the COW session.
     {
       auto index = IndexFactory::CreateAndInitIndex(*param);
       ASSERT_NE(nullptr, index);
       ASSERT_EQ(
           0, index->Open(index_name, {StorageOptions::StorageType::kMMAP,
                                       /*create_new=*/false, /*read_only=*/true,
-                                      StorageOptions::MmapMode::kShared}));
+                                      /*cow_on_write=*/false}));
 
       auto target = make_vec(13);
       VectorData query;
@@ -271,15 +271,14 @@ TEST(IndexInterface, CopyOnWrite) {
       ASSERT_EQ(0, index->Close());
     }
 
-    // Phase 4: repeated open/close under kPrivateEphemeral must not lose
-    // entries.
+    // Phase 4: repeated open/close under COW mmap must not lose entries.
     for (int cycle = 0; cycle < 3; ++cycle) {
       auto index = IndexFactory::CreateAndInitIndex(*param);
       ASSERT_NE(nullptr, index);
       ASSERT_EQ(0, index->Open(index_name,
                                {StorageOptions::StorageType::kMMAP,
                                 /*create_new=*/false, /*read_only=*/true,
-                                StorageOptions::MmapMode::kPrivateEphemeral}));
+                                /*cow_on_write=*/true}));
       uint32_t i = static_cast<uint32_t>(cycle * 5 + 2);
       auto target = make_vec(i);
       VectorData query;
@@ -291,17 +290,16 @@ TEST(IndexInterface, CopyOnWrite) {
       ASSERT_EQ(0, index->Close());
     }
 
-    // Phase 5: open in kPrivatePersistent (file opened writable, MAP_PRIVATE,
-    // flush pwrites dirty private pages back). Without performing writes the
-    // close path still exercises the pwrite branch with no dirty pages, which
-    // must not corrupt the file.
+    // Phase 5: open in COW mmap (writable MAP_PRIVATE with forced flush).
+    // Without performing writes the close path still exercises the pwrite
+    // branch with no dirty pages, which must not corrupt the file.
     {
       auto index = IndexFactory::CreateAndInitIndex(*param);
       ASSERT_NE(nullptr, index);
       ASSERT_EQ(0, index->Open(index_name,
                                {StorageOptions::StorageType::kMMAP,
                                 /*create_new=*/false, /*read_only=*/true,
-                                StorageOptions::MmapMode::kPrivatePersistent}));
+                                /*cow_on_write=*/true}));
 
       auto target = make_vec(21);
       VectorData query;
@@ -313,15 +311,15 @@ TEST(IndexInterface, CopyOnWrite) {
       ASSERT_EQ(0, index->Close());
     }
 
-    // Phase 6: reopen with kShared to confirm Phase 5's writable open/close
-    // left the file intact.
+    // Phase 6: reopen with shared mmap to confirm Phase 5's open/close left
+    // the file intact.
     {
       auto index = IndexFactory::CreateAndInitIndex(*param);
       ASSERT_NE(nullptr, index);
       ASSERT_EQ(
           0, index->Open(index_name, {StorageOptions::StorageType::kMMAP,
                                       /*create_new=*/false, /*read_only=*/true,
-                                      StorageOptions::MmapMode::kShared}));
+                                      /*cow_on_write=*/false}));
       for (uint32_t i = 0; i < kNumVectors; ++i) {
         auto target = make_vec(i);
         VectorData query;
@@ -373,8 +371,8 @@ TEST(IndexInterface, CopyOnWrite) {
            .with_ef_search(32)
            .build());
 
-  // Flat-only durability check for kPrivatePersistent: writes performed under
-  // MAP_PRIVATE must be pwrite-flushed back and visible after a kShared
+  // Flat-only durability check for COW mmap: writes performed under
+  // MAP_PRIVATE must be pwrite-flushed back and visible after a shared-mmap
   // reopen. Flat is used because Add/Flush against a previously-built file is
   // straightforward to reason about for this storage layer.
   {
@@ -395,7 +393,7 @@ TEST(IndexInterface, CopyOnWrite) {
       ASSERT_EQ(0, index->Open(persist_index,
                                {StorageOptions::StorageType::kMMAP,
                                 /*create_new=*/true, /*read_only=*/false,
-                                StorageOptions::MmapMode::kShared}));
+                                /*cow_on_write=*/false}));
       auto v0 = make_vec(0);
       VectorData vd;
       vd.vector = DenseVector{v0.data()};
@@ -404,7 +402,7 @@ TEST(IndexInterface, CopyOnWrite) {
       ASSERT_EQ(0, index->Close());
     }
 
-    // Add a new vector through kPrivatePersistent and explicitly Flush so
+    // Add a new vector through COW mmap and explicitly Flush so
     // dirty private pages are written back to the file.
     {
       auto index = IndexFactory::CreateAndInitIndex(*persist_param);
@@ -412,7 +410,7 @@ TEST(IndexInterface, CopyOnWrite) {
       ASSERT_EQ(0, index->Open(persist_index,
                                {StorageOptions::StorageType::kMMAP,
                                 /*create_new=*/false, /*read_only=*/false,
-                                StorageOptions::MmapMode::kPrivatePersistent}));
+                                /*cow_on_write=*/true}));
       auto v1 = make_vec(1);
       VectorData vd;
       vd.vector = DenseVector{v1.data()};
@@ -421,15 +419,15 @@ TEST(IndexInterface, CopyOnWrite) {
       ASSERT_EQ(0, index->Close());
     }
 
-    // Reopen with kShared: the entry written in kPrivatePersistent must be
-    // durable on disk.
+    // Reopen with shared mmap: the entry written in COW mode must be durable
+    // on disk.
     {
       auto index = IndexFactory::CreateAndInitIndex(*persist_param);
       ASSERT_NE(nullptr, index);
       ASSERT_EQ(0, index->Open(persist_index,
                                {StorageOptions::StorageType::kMMAP,
                                 /*create_new=*/false, /*read_only=*/true,
-                                StorageOptions::MmapMode::kShared}));
+                                /*cow_on_write=*/false}));
       auto target = make_vec(1);
       VectorData query;
       query.vector = DenseVector{target.data()};

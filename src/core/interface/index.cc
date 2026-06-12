@@ -256,9 +256,8 @@ int Index::Open(const std::string &file_path, StorageOptions storage_options) {
   // storage_params.set("proxima.mmap_file.storage.memory_warmup", true);
   // storage_params.set("proxima.mmap_file.storage.segment_meta_capacity",
   // 1024);
-  bool cow = storage_options.mmap_mode != StorageOptions::MmapMode::kShared;
-  bool force_flush =
-      storage_options.mmap_mode == StorageOptions::MmapMode::kPrivatePersistent;
+  bool cow = storage_options.cow_on_write;
+  bool force_flush = cow;
   storage_params.set(core::MMAPFILE_STORAGE_COPY_ON_WRITE, cow);
   storage_params.set(core::MMAPFILE_STORAGE_FORCE_FLUSH, force_flush);
   switch (storage_options.type) {
