@@ -2781,10 +2781,9 @@ TEST(VectorColumnIndexerTest, GroupBySearch) {
        std::make_shared<HnswQueryParams>(300));
 }
 
-// Verify that when an unsupported index type (Vamana, IVF) is used with
-// group_by, the indexer returns a VectorIndexResults (not
-// GroupVectorIndexResults) with zero documents. This guards against
-// silently returning no results from indexes that do not implement group_by.
+// Verify that when an unsupported index type (IVF) is used with group_by,
+// the indexer returns an error. The core layer rejects group_by with
+// IndexError_Unsupported, which surfaces as a search failure at the DB layer.
 TEST(VectorColumnIndexerTest, GroupBySearchUnsupported) {
   auto run = [&](const IndexParams::Ptr index_params,
                  const QueryParams::Ptr query_params) {
@@ -2828,22 +2827,10 @@ TEST(VectorColumnIndexerTest, GroupBySearchUnsupported) {
             });
 
     auto results = indexer->Search(query, indexer_query_params);
-    ASSERT_TRUE(results.has_value());
-
-    // Unsupported index types should NOT produce GroupVectorIndexResults.
-    auto group_results =
-        dynamic_cast<GroupVectorIndexResults *>(results.value().get());
-    ASSERT_FALSE(group_results)
-        << "Unsupported index type should not return GroupVectorIndexResults";
-
-    // The result should be VectorIndexResults with zero documents because
-    // the underlying algorithm does not populate group results.
-    auto vector_results =
-        dynamic_cast<VectorIndexResults *>(results.value().get());
-    ASSERT_TRUE(vector_results)
-        << "Expected VectorIndexResults for unsupported index type";
-    ASSERT_EQ(0u, vector_results->count())
-        << "Unsupported index with group_by should return 0 documents";
+    // The search should fail because the core layer rejects group_by
+    // for unsupported index types.
+    ASSERT_FALSE(results.has_value())
+        << "group_by should be rejected for unsupported index type";
 
     indexer->Close();
     zvec::test_util::RemoveTestFiles(index_file_path);
