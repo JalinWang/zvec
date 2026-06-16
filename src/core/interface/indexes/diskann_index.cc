@@ -278,6 +278,7 @@ int DiskAnnIndex::_prepare_for_search(
       core::PARAM_DISKANN_SEARCHER_LIST_SIZE,
       std::max(diskann_search_param->topk, diskann_search_param->list_size));
   context->update(params);
+  _set_group_by_on_context(search_param, context);
 
   return 0;
 }

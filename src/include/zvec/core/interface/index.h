@@ -95,6 +95,7 @@ struct VectorDataBuffer {
 
 struct SearchResult {
   core::IndexDocumentList doc_list_;
+  core::IndexGroupDocumentList group_doc_list_;
   // use string to manage memory
   std::vector<std::string> reverted_vector_list_{};
   std::vector<std::string> reverted_sparse_values_list_{};
@@ -194,6 +195,12 @@ class Index {
       core::IndexContext::Pointer &context) = 0;
   virtual int _get_coarse_search_topk(
       const BaseIndexQueryParam::Pointer &search_param);
+
+  //! Helper: set group_by on context from the query param (common for all
+  //! index types). Call this at the end of _prepare_for_search.
+  static void _set_group_by_on_context(
+      const BaseIndexQueryParam::Pointer &search_param,
+      core::IndexContext::Pointer &context);
 
  protected:
   friend class IndexFactory;

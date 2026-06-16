@@ -15,6 +15,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -161,6 +162,13 @@ struct RefinerParam {
   std::shared_ptr<Index> reference_index = nullptr;
 };
 
+// --- GroupBy Parameters ---
+struct GroupByParam {
+  uint32_t group_topk{0};
+  uint32_t group_count{0};
+  std::function<std::string(uint64_t key)> group_by{};
+};
+
 // --- Query Parameters (can be passed to search methods) ---
 class BaseIndexQueryParam {
  public:
@@ -175,6 +183,7 @@ class BaseIndexQueryParam {
   float radius = 0.0f;
   bool is_linear = false;
   RefinerParam::Pointer refiner_param = nullptr;
+  std::shared_ptr<GroupByParam> group_by_param = nullptr;
 
   virtual Pointer Clone() const = 0;
 };
@@ -217,10 +226,10 @@ struct IVFQueryParam : public BaseIndexQueryParam {
   using Pointer = std::shared_ptr<IVFQueryParam>;
 
   BaseIndexQueryParam::Pointer Clone() const override {
-    auto cloned_this = std::make_shared<IVFQueryParam>(*this);
-    cloned_this->l1QueryParam = l1QueryParam ? l1QueryParam->Clone() : nullptr;
-    cloned_this->l2QueryParam = l2QueryParam ? l2QueryParam->Clone() : nullptr;
-    return cloned_this;
+    auto cloned = std::make_shared<IVFQueryParam>(*this);
+    cloned->l1QueryParam = l1QueryParam ? l1QueryParam->Clone() : nullptr;
+    cloned->l2QueryParam = l2QueryParam ? l2QueryParam->Clone() : nullptr;
+    return cloned;
   }
 };
 

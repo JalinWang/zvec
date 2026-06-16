@@ -16,6 +16,7 @@
 #include "db/index/column/vector_column/vector_column_indexer.h"
 #include <cassert>
 #include <cstdint>
+#include <set>
 #include <gtest/gtest.h>
 #include <zvec/ailego/buffer/block_eviction_queue.h>
 #include "db/index/column/vector_column/vector_column_params.h"
@@ -2680,6 +2681,180 @@ TEST(VectorColumnIndexerTest, Refiner) {
   func(std::make_shared<FlatIndexParams>(MetricType::L2, QuantizeType::INT8),
        std::make_shared<FlatIndexParams>(MetricType::L2),
        DataType::VECTOR_FP32);
+}
+
+// Test group_by search at the indexer (DB) layer.
+// Inserts multiple documents, sets group_by params on the query, and verifies
+// that the result is returned as GroupVectorIndexResults with correct groups.
+TEST(VectorColumnIndexerTest, GroupBySearch) {
+  auto func = [&](const IndexParams::Ptr index_params,
+                  const QueryParams::Ptr query_params) {
+    const std::string index_file_path = "test_groupby_indexer.index";
+    constexpr uint32_t kDimension = 4;
+    constexpr uint32_t kNumDocs = 12;
+    constexpr uint32_t kNumGroups = 3;
+    constexpr uint32_t kGroupTopk = 2;
+
+    zvec::test_util::RemoveTestFiles(index_file_path);
+
+    auto indexer = std::make_shared<VectorColumnIndexer>(
+        index_file_path, FieldSchema("test", DataType::VECTOR_FP32, kDimension,
+                                     false, index_params));
+    ASSERT_TRUE(indexer);
+    ASSERT_TRUE(
+        indexer->Open(vector_column_params::ReadOptions{true, true}).ok());
+
+    // Insert kNumDocs documents. doc_id i gets vector [i, i, i, i].
+    for (uint32_t i = 0; i < kNumDocs; ++i) {
+      auto vector = std::vector<float>(kDimension, static_cast<float>(i));
+      auto data = vector_column_params::VectorData{
+          vector_column_params::DenseVector{vector.data()}};
+      ASSERT_TRUE(indexer->Insert(data, i).ok());
+    }
+
+    // Search with group_by
+    auto query_vector = std::vector<float>(kDimension, 1.0f);
+    auto query = vector_column_params::VectorData{
+        vector_column_params::DenseVector{query_vector.data()}};
+    vector_column_params::QueryParams indexer_query_params;
+    indexer_query_params.topk = 100;
+    indexer_query_params.filter = nullptr;
+    indexer_query_params.fetch_vector = false;
+    indexer_query_params.query_params = query_params;
+    indexer_query_params.group_by =
+        std::make_unique<vector_column_params::GroupByParams>(
+            kGroupTopk, kNumGroups, [&](uint64_t key) -> std::string {
+              return std::to_string(key % kNumGroups);
+            });
+
+    auto results = indexer->Search(query, indexer_query_params);
+    ASSERT_TRUE(results.has_value());
+
+    // The result should be GroupVectorIndexResults
+    auto group_results =
+        dynamic_cast<GroupVectorIndexResults *>(results.value().get());
+    ASSERT_TRUE(group_results) << "Expected GroupVectorIndexResults";
+    ASSERT_EQ(kNumGroups, group_results->groups().size());
+
+    // Verify each group
+    std::set<std::string> group_ids;
+    for (const auto &group : group_results->groups()) {
+      group_ids.insert(group.group_id());
+      ASSERT_LE(group.docs().size(), kGroupTopk);
+      ASSERT_GE(group.docs().size(), 1u);
+    }
+
+    for (uint32_t g = 0; g < kNumGroups; ++g) {
+      ASSERT_TRUE(group_ids.count(std::to_string(g)) > 0)
+          << "Missing group: " << g;
+    }
+
+    // Verify docs belong to correct group and are sorted by score
+    for (const auto &group : group_results->groups()) {
+      uint32_t expected_mod = std::stoul(group.group_id());
+      for (const auto &doc : group.docs()) {
+        ASSERT_EQ(expected_mod, doc.key() % kNumGroups)
+            << "Doc " << doc.key() << " in wrong group " << group.group_id();
+      }
+      for (size_t j = 1; j < group.docs().size(); ++j) {
+        ASSERT_GE(group.docs()[j - 1].score(), group.docs()[j].score())
+            << "Docs not sorted within group " << group.group_id();
+      }
+    }
+
+    // Verify iterator works correctly
+    auto iter = group_results->create_iterator();
+    size_t total_docs = 0;
+    while (iter->valid()) {
+      total_docs++;
+      iter->next();
+    }
+    ASSERT_EQ(group_results->count(), total_docs);
+
+    indexer->Close();
+    zvec::test_util::RemoveTestFiles(index_file_path);
+  };
+
+  func(std::make_shared<FlatIndexParams>(MetricType::IP),
+       std::make_shared<QueryParams>(IndexType::FLAT));
+  func(std::make_shared<HnswIndexParams>(MetricType::IP, 10, 100),
+       std::make_shared<HnswQueryParams>(300));
+}
+
+// Verify that when an unsupported index type (Vamana, IVF) is used with
+// group_by, the indexer returns a VectorIndexResults (not
+// GroupVectorIndexResults) with zero documents. This guards against
+// silently returning no results from indexes that do not implement group_by.
+TEST(VectorColumnIndexerTest, GroupBySearchUnsupported) {
+  auto run = [&](const IndexParams::Ptr index_params,
+                 const QueryParams::Ptr query_params) {
+    const std::string index_file_path =
+        "test_groupby_unsupported_indexer.index";
+    constexpr uint32_t kDimension = 4;
+    constexpr uint32_t kNumDocs = 12;
+    constexpr uint32_t kNumGroups = 3;
+    constexpr uint32_t kGroupTopk = 2;
+
+    zvec::test_util::RemoveTestFiles(index_file_path);
+
+    auto indexer = std::make_shared<VectorColumnIndexer>(
+        index_file_path, FieldSchema("test", DataType::VECTOR_FP32, kDimension,
+                                     false, index_params));
+    ASSERT_TRUE(indexer);
+    ASSERT_TRUE(
+        indexer->Open(vector_column_params::ReadOptions{true, true}).ok());
+
+    // Insert documents
+    for (uint32_t i = 0; i < kNumDocs; ++i) {
+      auto vector = std::vector<float>(kDimension, static_cast<float>(i));
+      auto data = vector_column_params::VectorData{
+          vector_column_params::DenseVector{vector.data()}};
+      ASSERT_TRUE(indexer->Insert(data, i).ok());
+    }
+
+    // Search with group_by on an unsupported index type
+    auto query_vector = std::vector<float>(kDimension, 1.0f);
+    auto query = vector_column_params::VectorData{
+        vector_column_params::DenseVector{query_vector.data()}};
+    vector_column_params::QueryParams indexer_query_params;
+    indexer_query_params.topk = 100;
+    indexer_query_params.filter = nullptr;
+    indexer_query_params.fetch_vector = false;
+    indexer_query_params.query_params = query_params;
+    indexer_query_params.group_by =
+        std::make_unique<vector_column_params::GroupByParams>(
+            kGroupTopk, kNumGroups, [&](uint64_t key) -> std::string {
+              return std::to_string(key % kNumGroups);
+            });
+
+    auto results = indexer->Search(query, indexer_query_params);
+    ASSERT_TRUE(results.has_value());
+
+    // Unsupported index types should NOT produce GroupVectorIndexResults.
+    auto group_results =
+        dynamic_cast<GroupVectorIndexResults *>(results.value().get());
+    ASSERT_FALSE(group_results)
+        << "Unsupported index type should not return GroupVectorIndexResults";
+
+    // The result should be VectorIndexResults with zero documents because
+    // the underlying algorithm does not populate group results.
+    auto vector_results =
+        dynamic_cast<VectorIndexResults *>(results.value().get());
+    ASSERT_TRUE(vector_results)
+        << "Expected VectorIndexResults for unsupported index type";
+    ASSERT_EQ(0u, vector_results->count())
+        << "Unsupported index with group_by should return 0 documents";
+
+    indexer->Close();
+    zvec::test_util::RemoveTestFiles(index_file_path);
+  };
+
+  // Vamana is not tested here due to streamer creation constraints
+  // at the indexer layer. See core layer test for Vamana validation.
+
+  // IVF does not support group_by
+  run(std::make_shared<IVFIndexParams>(MetricType::IP, 4),
+      std::make_shared<IVFQueryParams>(4));
 }
 
 #if defined(__GNUC__) || defined(__GNUG__)

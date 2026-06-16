@@ -216,6 +216,7 @@ int IVFIndex::_prepare_for_search(
                ivf_search_param->nprobe);
     context->update(params);
   }
+  _set_group_by_on_context(search_param, context);
   return 0;
 }
 

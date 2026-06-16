@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <numeric>
+#include <unordered_map>
 
 namespace zvec {
 
@@ -57,6 +58,10 @@ Result<IndexResults::Ptr> CombinedVectorColumnIndexer::Search(
   core::IndexDocumentList doc_list;
   std::vector<std::string> reverted_vector_list;
   std::vector<std::string> reverted_sparse_values_list;
+
+  // For merging group_by results across blocks
+  core::IndexGroupDocumentList merged_group_docs;
+  std::unordered_map<std::string, size_t> group_merge_map;
 
   // query_params.bf_pks is segment level, here we need to convert it to block
   // level
@@ -153,6 +158,34 @@ Result<IndexResults::Ptr> CombinedVectorColumnIndexer::Search(
     }
 
     auto index_results = result.value();
+
+    // Handle group_by results
+    GroupVectorIndexResults *group_index_results =
+        dynamic_cast<GroupVectorIndexResults *>(index_results.get());
+    if (group_index_results != nullptr) {
+      // Merge group results from this block
+      auto &sub_groups = group_index_results->groups();
+      for (auto &group : sub_groups) {
+        // Adjust keys in group docs by block offset
+        for (auto &doc : *group.mutable_docs()) {
+          doc.set_key(block_offsets_[i] + doc.key());
+        }
+        // Merge into existing group or create new one
+        auto it = group_merge_map.find(group.group_id());
+        if (it != group_merge_map.end()) {
+          auto &existing_docs = *merged_group_docs[it->second].mutable_docs();
+          auto &new_docs = *group.mutable_docs();
+          existing_docs.insert(existing_docs.end(),
+                               std::make_move_iterator(new_docs.begin()),
+                               std::make_move_iterator(new_docs.end()));
+        } else {
+          group_merge_map[group.group_id()] = merged_group_docs.size();
+          merged_group_docs.emplace_back(std::move(group));
+        }
+      }
+      continue;
+    }
+
     VectorIndexResults *vector_index_results =
         dynamic_cast<VectorIndexResults *>(index_results.get());
 
@@ -175,6 +208,35 @@ Result<IndexResults::Ptr> CombinedVectorColumnIndexer::Search(
         reverted_sparse_values_list.end(),
         std::make_move_iterator(temp_sparse_list.begin()),
         std::make_move_iterator(temp_sparse_list.end()));
+  }
+
+  // Return merged group_by results if any
+  if (!merged_group_docs.empty()) {
+    // Sort docs within each group by score and truncate to group_topk
+    bool lower_is_better =
+        (metric_type_ == MetricType::L2 || metric_type_ == MetricType::COSINE);
+    uint32_t group_topk =
+        query_params.group_by ? query_params.group_by->group_topk : 0;
+    for (auto &group : merged_group_docs) {
+      auto &docs = *group.mutable_docs();
+      std::sort(docs.begin(), docs.end(),
+                [lower_is_better](const core::IndexDocument &a,
+                                  const core::IndexDocument &b) {
+                  return lower_is_better ? a.score() < b.score()
+                                         : a.score() > b.score();
+                });
+      if (group_topk > 0 && docs.size() > group_topk) {
+        docs.resize(group_topk);
+      }
+    }
+    // Truncate to group_count
+    uint32_t group_count =
+        query_params.group_by ? query_params.group_by->group_count : 0;
+    if (group_count > 0 && merged_group_docs.size() > group_count) {
+      merged_group_docs.resize(group_count);
+    }
+    return std::make_unique<GroupVectorIndexResults>(
+        std::move(merged_group_docs));
   }
 
   if (doc_list.empty()) {

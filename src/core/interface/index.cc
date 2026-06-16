@@ -683,7 +683,6 @@ int Index::_dense_search(const VectorData &vector_data,
     }
     vector = new_vector.data();
   }
-  // TODO: group by
   if (search_param->bf_pks != nullptr) {
     // should we eliminate the copy of bf_pks?
     if (streamer_->search_bf_by_p_keys_impl(
@@ -703,30 +702,76 @@ int Index::_dense_search(const VectorData &vector_data,
       return core::IndexError_Runtime;
     }
   }
-  result->doc_list_ = std::move(context->result());
+
+  // Retrieve group_by results if applicable
+  bool has_group_by =
+      (search_param->group_by_param && search_param->group_by_param->group_by);
+  if (has_group_by) {
+    result->group_doc_list_ = std::move(
+        const_cast<core::IndexGroupDocumentList &>(context->group_result()));
+  } else {
+    result->doc_list_ = std::move(context->result());
+  }
 
   if (metric_->support_normalize()) {
-    for (uint32_t i = 0; i < result->doc_list_.size(); ++i) {
-      metric_->normalize(result->doc_list_[i].mutable_score());
+    if (has_group_by) {
+      for (auto &group : result->group_doc_list_) {
+        for (auto &doc : *group.mutable_docs()) {
+          metric_->normalize(doc.mutable_score());
+        }
+      }
+    } else {
+      for (uint32_t i = 0; i < result->doc_list_.size(); ++i) {
+        metric_->normalize(result->doc_list_[i].mutable_score());
+      }
     }
   }
   if (reformer_) {
-    if (reformer_->normalize(dense_vector.data, input_vector_meta_,
-                             result->doc_list_) != 0) {
-      LOG_ERROR("Failed to normalize vector");
-      return core::IndexError_Runtime;
+    if (has_group_by) {
+      for (auto &group : result->group_doc_list_) {
+        auto *docs = group.mutable_docs();
+        core::IndexDocumentList doc_list(docs->begin(), docs->end());
+        if (reformer_->normalize(dense_vector.data, input_vector_meta_,
+                                 doc_list) != 0) {
+          LOG_ERROR("Failed to normalize vector");
+          return core::IndexError_Runtime;
+        }
+        std::copy(doc_list.begin(), doc_list.end(), docs->begin());
+      }
+    } else {
+      if (reformer_->normalize(dense_vector.data, input_vector_meta_,
+                               result->doc_list_) != 0) {
+        LOG_ERROR("Failed to normalize vector");
+        return core::IndexError_Runtime;
+      }
     }
     if (context->fetch_vector() && reformer_->need_revert()) {
       // TODO: use std::pmr to optimize memory allocation
-      result->reverted_vector_list_.resize(context->result().size());
-      for (uint32_t i = 0; i < context->result().size(); ++i) {
-        std::string &reverted_vector = result->reverted_vector_list_[i];
-        reverted_vector.resize(input_vector_meta_.dimension() *
-                               input_vector_meta_.unit_size());
-        if (reformer_->revert(context->result()[i].vector(), new_meta,
-                              &reverted_vector) != 0) {
-          LOG_ERROR("Failed to revert vector");
-          return core::IndexError_Runtime;
+      if (has_group_by) {
+        for (auto &group : result->group_doc_list_) {
+          for (auto &doc : group.docs()) {
+            std::string reverted_vector;
+            reverted_vector.resize(input_vector_meta_.dimension() *
+                                   input_vector_meta_.unit_size());
+            if (reformer_->revert(doc.vector(), new_meta, &reverted_vector) !=
+                0) {
+              LOG_ERROR("Failed to revert vector");
+              return core::IndexError_Runtime;
+            }
+            result->reverted_vector_list_.push_back(std::move(reverted_vector));
+          }
+        }
+      } else {
+        result->reverted_vector_list_.resize(result->doc_list_.size());
+        for (uint32_t i = 0; i < result->doc_list_.size(); ++i) {
+          std::string &reverted_vector = result->reverted_vector_list_[i];
+          reverted_vector.resize(input_vector_meta_.dimension() *
+                                 input_vector_meta_.unit_size());
+          if (reformer_->revert(result->doc_list_[i].vector(), new_meta,
+                                &reverted_vector) != 0) {
+            LOG_ERROR("Failed to revert vector");
+            return core::IndexError_Runtime;
+          }
         }
       }
     }
@@ -782,33 +827,70 @@ int Index::_sparse_search(const VectorData &vector_data,
       return core::IndexError_Runtime;
     }
   }
-  result->doc_list_ = std::move(context->result());
+  // Retrieve group_by results if applicable
+  bool has_group_by =
+      (search_param->group_by_param && search_param->group_by_param->group_by);
+  if (has_group_by) {
+    result->group_doc_list_ = std::move(
+        const_cast<core::IndexGroupDocumentList &>(context->group_result()));
+  } else {
+    result->doc_list_ = std::move(context->result());
+  }
 
   if (metric_->support_normalize()) {
-    for (uint32_t i = 0; i < result->doc_list_.size(); ++i) {
-      metric_->normalize(result->doc_list_[i].mutable_score());
+    if (has_group_by) {
+      for (auto &group : result->group_doc_list_) {
+        for (auto &doc : *group.mutable_docs()) {
+          metric_->normalize(doc.mutable_score());
+        }
+      }
+    } else {
+      for (uint32_t i = 0; i < result->doc_list_.size(); ++i) {
+        metric_->normalize(result->doc_list_[i].mutable_score());
+      }
     }
   }
   if (reformer_) {
     // TODO: no need to call reformer_->normalize() when sparse?
     if (context->fetch_vector() && reformer_->need_revert()) {
       // TODO: use std::pmr to optimize memory allocation
-      auto &result_doc_list = context->result();
-      result->reverted_sparse_values_list_.resize(result_doc_list.size());
-      for (uint32_t i = 0; i < result_doc_list.size(); ++i) {
-        auto &result_doc = result_doc_list[i].sparse_doc();
-        std::string &reverted_sparse_values =
-            result->reverted_sparse_values_list_[i];
-        reverted_sparse_values.resize(result_doc.sparse_count() *
-                                      input_vector_meta_.unit_size());
-        if (reformer_->revert(result_doc.sparse_count(),
-                              reinterpret_cast<const uint32_t *>(
-                                  result_doc.sparse_indices().data()),
-                              reinterpret_cast<const void *>(
-                                  result_doc.sparse_values().data()),
-                              new_meta, &reverted_sparse_values) != 0) {
-          LOG_ERROR("Failed to revert sparse vector");
-          return core::IndexError_Runtime;
+      if (has_group_by) {
+        for (auto &group : result->group_doc_list_) {
+          for (auto &doc : group.docs()) {
+            auto &result_doc = doc.sparse_doc();
+            std::string reverted_sparse_values;
+            reverted_sparse_values.resize(result_doc.sparse_count() *
+                                          input_vector_meta_.unit_size());
+            if (reformer_->revert(result_doc.sparse_count(),
+                                  reinterpret_cast<const uint32_t *>(
+                                      result_doc.sparse_indices().data()),
+                                  reinterpret_cast<const void *>(
+                                      result_doc.sparse_values().data()),
+                                  new_meta, &reverted_sparse_values) != 0) {
+              LOG_ERROR("Failed to revert sparse vector");
+              return core::IndexError_Runtime;
+            }
+            result->reverted_sparse_values_list_.push_back(
+                std::move(reverted_sparse_values));
+          }
+        }
+      } else {
+        result->reverted_sparse_values_list_.resize(result->doc_list_.size());
+        for (uint32_t i = 0; i < result->doc_list_.size(); ++i) {
+          auto &result_doc = result->doc_list_[i].sparse_doc();
+          std::string &reverted_sparse_values =
+              result->reverted_sparse_values_list_[i];
+          reverted_sparse_values.resize(result_doc.sparse_count() *
+                                        input_vector_meta_.unit_size());
+          if (reformer_->revert(result_doc.sparse_count(),
+                                reinterpret_cast<const uint32_t *>(
+                                    result_doc.sparse_indices().data()),
+                                reinterpret_cast<const void *>(
+                                    result_doc.sparse_values().data()),
+                                new_meta, &reverted_sparse_values) != 0) {
+            LOG_ERROR("Failed to revert sparse vector");
+            return core::IndexError_Runtime;
+          }
         }
       }
     }
@@ -882,6 +964,16 @@ int Index::_get_coarse_search_topk(
     scale_factor = 1;
   }
   return floor(search_param->topk * scale_factor);
+}
+
+void Index::_set_group_by_on_context(
+    const BaseIndexQueryParam::Pointer &search_param,
+    core::IndexContext::Pointer &context) {
+  if (search_param->group_by_param && search_param->group_by_param->group_by) {
+    context->set_group_by(search_param->group_by_param->group_by);
+    context->set_group_params(search_param->group_by_param->group_count,
+                              search_param->group_by_param->group_topk);
+  }
 }
 
 std::string Index::get_metric_name(MetricType metric_type, bool is_sparse) {
