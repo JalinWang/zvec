@@ -2386,7 +2386,7 @@ TEST(IndexInterface, IsDirtyBufferPool) {
 // interface: documents are inserted with known keys, a group_by function maps
 // keys to group names, and the search result should contain grouped documents
 // in group_doc_list_ (rather than the plain doc_list_).
-TEST(IndexInterface, GroupBySearch) {
+TEST(IndexInterface, GroupBySearchDense) {
   constexpr uint32_t kDimension = 4;
   constexpr uint32_t kNumDocs = 12;
   constexpr uint32_t kNumGroups = 3;
@@ -2548,6 +2548,14 @@ TEST(IndexInterface, GroupBySearch) {
            .with_ef_search(100)
            .with_fetch_vector(true)
            .build());
+}
+
+TEST(IndexInterface, GroupBySearchSparse) {
+  constexpr uint32_t kDimension = 4;
+  constexpr uint32_t kNumDocs = 12;
+  constexpr uint32_t kNumGroups = 3;
+  constexpr uint32_t kGroupTopk = 2;
+  const std::string index_name{"test_groupby.index"};
 
   // --- Sparse variants ---
   auto sparse_func = [&](const BaseIndexParam::Pointer &param,
@@ -2609,19 +2617,26 @@ TEST(IndexInterface, GroupBySearch) {
     }
 
     // Verify fetch_vector with group_by for sparse indexes.
-    // Note: sparse group_by currently does not populate sparse_doc in
-    // group results even when fetch_vector is enabled. This is a known
-    // limitation. We verify the behavior and guard against regressions.
+    // Each doc i was inserted with kDimension non-zero entries at indices
+    // [0..kDimension-1] with all values == float(i).
     if (query_param->fetch_vector) {
       for (const auto &group : result.group_doc_list_) {
         for (const auto &doc : group.docs()) {
           const auto &sparse = doc.sparse_doc();
-          // Sparse group_by does not yet fetch vector data;
-          // sparse_count is expected to be 0.
-          // TODO: once sparse group_by supports fetch_vector, assert
-          // sparse_count == kDimension and validate values.
-          (void)sparse;
-          (void)doc;
+          ASSERT_EQ(kDimension, sparse.sparse_count())
+              << "sparse_count mismatch for doc " << doc.key();
+          auto fetched_indices = reinterpret_cast<const uint32_t *>(
+              sparse.sparse_indices().data());
+          auto fetched_values =
+              reinterpret_cast<const float *>(sparse.sparse_values().data());
+          float expected_val = static_cast<float>(doc.key());
+          for (uint32_t d = 0; d < kDimension; ++d) {
+            ASSERT_EQ(d, fetched_indices[d]) << "sparse index mismatch for doc "
+                                             << doc.key() << " dim " << d;
+            ASSERT_FLOAT_EQ(expected_val, fetched_values[d])
+                << "sparse value mismatch for doc " << doc.key() << " dim "
+                << d;
+          }
         }
       }
     }
@@ -2784,8 +2799,8 @@ TEST(IndexInterface, GroupByUnsupportedIndexType) {
   constexpr uint32_t kNumDocs = 12;
   const std::string index_name{"test_groupby_unsupported.index"};
 
-  auto run = [&](const BaseIndexParam::Pointer &param,
-                 const BaseIndexQueryParam::Pointer &query_param) {
+  auto run_expect_error = [&](const BaseIndexParam::Pointer &param,
+                              const BaseIndexQueryParam::Pointer &query_param) {
     zvec::test_util::RemoveTestFiles(index_name);
     auto index = IndexFactory::CreateAndInitIndex(*param);
     ASSERT_NE(nullptr, index);
@@ -2810,24 +2825,16 @@ TEST(IndexInterface, GroupByUnsupportedIndexType) {
     SearchResult result;
     int ret = index->Search(query, query_param, &result);
 
-    // The search call itself should succeed (return 0).
-    ASSERT_EQ(0, ret);
-
-    // For unsupported index types, group_doc_list_ will be empty because
-    // the underlying algorithm does not populate group results.
-    // doc_list_ is also empty because the code path goes to the group_by
-    // branch in _dense_search. This is the expected current behavior.
-    ASSERT_TRUE(result.doc_list_.empty())
-        << "doc_list_ should be empty when group_by_param is set";
-    ASSERT_TRUE(result.group_doc_list_.empty())
-        << "group_doc_list_ should be empty for unsupported index types";
+    // The search call should return a non-zero error code.
+    ASSERT_NE(0, ret) << "group_by should be rejected for unsupported index";
 
     index->Close();
     zvec::test_util::RemoveTestFiles(index_name);
   };
 
-  // Vamana does not support group_by
-  run(VamanaIndexParamBuilder()
+  // Vamana does not support group_by (returns error)
+  run_expect_error(
+      VamanaIndexParamBuilder()
           .WithMetricType(MetricType::kInnerProduct)
           .WithDataType(DataType::DT_FP32)
           .WithDimension(kDimension)
@@ -2838,15 +2845,15 @@ TEST(IndexInterface, GroupByUnsupportedIndexType) {
           .Build(),
       VamanaQueryParamBuilder().with_topk(100).with_ef_search(100).build());
 
-  // IVF does not support group_by
-  run(IVFIndexParamBuilder()
-          .WithMetricType(MetricType::kInnerProduct)
-          .WithDataType(DataType::DT_FP32)
-          .WithDimension(kDimension)
-          .WithIsSparse(false)
-          .WithNList(4)
-          .Build(),
-      IVFQueryParamBuilder().with_topk(100).build());
+  // IVF does not support group_by (returns error)
+  run_expect_error(IVFIndexParamBuilder()
+                       .WithMetricType(MetricType::kInnerProduct)
+                       .WithDataType(DataType::DT_FP32)
+                       .WithDimension(kDimension)
+                       .WithIsSparse(false)
+                       .WithNList(4)
+                       .Build(),
+                   IVFQueryParamBuilder().with_topk(100).build());
 }
 
 #if defined(__GNUC__) || defined(__GNUG__)
