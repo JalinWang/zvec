@@ -41,6 +41,12 @@ struct StorageOptions {
   StorageType type = StorageType::kNone;
   bool create_new = false;
   bool read_only = false;
+
+  // Only meaningful when type == kMMAP.
+  // false: MAP_SHARED. Writes through mmap auto-persist to the file.
+  // true : MAP_PRIVATE on a writable file. Flush/close forces dirty pages
+  //        back to disk via explicit pwrite.
+  bool copy_on_write = false;
 };
 
 struct MergeOptions {

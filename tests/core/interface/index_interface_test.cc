@@ -186,6 +186,267 @@ TEST(IndexInterface, General) {
            .build());
 }
 
+TEST(IndexInterface, CopyOnWrite) {
+  constexpr uint32_t kDimension = 64;
+  constexpr uint32_t kNumVectors = 50;
+  const std::string index_name{"test_cow.index"};
+
+  auto make_vec = [&](uint32_t seed) {
+    std::vector<float> v(kDimension, 0.0f);
+    v[seed % kDimension] = 1.0f;
+    return v;
+  };
+
+  auto func = [&](const BaseIndexParam::Pointer &param,
+                  const BaseIndexQueryParam::Pointer &query_param) {
+    zvec::test_util::RemoveTestFiles(index_name);
+
+    // Phase 1: build the index with shared mmap (writeable shared mapping)
+    // since the COW mode isn't used as the initial ingest path here.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(
+          0, index->Open(index_name, {StorageOptions::StorageType::kMMAP,
+                                      /*create_new=*/true, /*read_only=*/false,
+                                      /*copy_on_write=*/false}));
+
+      std::vector<std::vector<float>> vecs;
+      vecs.reserve(kNumVectors);
+      for (uint32_t i = 0; i < kNumVectors; ++i) {
+        vecs.emplace_back(make_vec(i));
+        VectorData vd;
+        vd.vector = DenseVector{vecs.back().data()};
+        ASSERT_EQ(0, index->Add(vd, /*key=*/100 + i));
+      }
+      ASSERT_EQ(0, index->Train());
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Phase 2: reopen with COW mmap. Search and Fetch must succeed against
+    // the persisted file.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(
+          0, index->Open(index_name, {StorageOptions::StorageType::kMMAP,
+                                      /*create_new=*/false, /*read_only=*/true,
+                                      /*copy_on_write=*/true}));
+
+      for (uint32_t i = 0; i < kNumVectors; ++i) {
+        auto target = make_vec(i);
+        VectorData query;
+        query.vector = DenseVector{target.data()};
+        SearchResult result;
+        ASSERT_EQ(0, index->Search(query, query_param, &result));
+        ASSERT_FALSE(result.doc_list_.empty());
+        ASSERT_EQ(100u + i, result.doc_list_[0].key());
+
+        VectorDataBuffer fetched;
+        ASSERT_EQ(0, index->Fetch(100 + i, &fetched));
+        auto *fetched_ptr = reinterpret_cast<const float *>(
+            std::get<DenseVectorBuffer>(fetched.vector_buffer).data.data());
+        ASSERT_FLOAT_EQ(1.0f, fetched_ptr[i % kDimension]);
+      }
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Phase 3: reopen with shared mmap to confirm the file is intact after
+    // the COW session.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(
+          0, index->Open(index_name, {StorageOptions::StorageType::kMMAP,
+                                      /*create_new=*/false, /*read_only=*/true,
+                                      /*copy_on_write=*/false}));
+
+      auto target = make_vec(13);
+      VectorData query;
+      query.vector = DenseVector{target.data()};
+      SearchResult result;
+      ASSERT_EQ(0, index->Search(query, query_param, &result));
+      ASSERT_FALSE(result.doc_list_.empty());
+      ASSERT_EQ(113u, result.doc_list_[0].key());
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Phase 4: repeated open/close under COW mmap must not lose entries.
+    for (int cycle = 0; cycle < 3; ++cycle) {
+      auto index = IndexFactory::CreateAndInitIndex(*param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(
+          0, index->Open(index_name, {StorageOptions::StorageType::kMMAP,
+                                      /*create_new=*/false, /*read_only=*/true,
+                                      /*copy_on_write=*/true}));
+      uint32_t i = static_cast<uint32_t>(cycle * 5 + 2);
+      auto target = make_vec(i);
+      VectorData query;
+      query.vector = DenseVector{target.data()};
+      SearchResult result;
+      ASSERT_EQ(0, index->Search(query, query_param, &result));
+      ASSERT_FALSE(result.doc_list_.empty());
+      ASSERT_EQ(100u + i, result.doc_list_[0].key());
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Phase 5: open in COW mmap (writable MAP_PRIVATE with forced flush).
+    // Without performing writes the close path still exercises the pwrite
+    // branch with no dirty pages, which must not corrupt the file.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(
+          0, index->Open(index_name, {StorageOptions::StorageType::kMMAP,
+                                      /*create_new=*/false, /*read_only=*/true,
+                                      /*copy_on_write=*/true}));
+
+      auto target = make_vec(21);
+      VectorData query;
+      query.vector = DenseVector{target.data()};
+      SearchResult result;
+      ASSERT_EQ(0, index->Search(query, query_param, &result));
+      ASSERT_FALSE(result.doc_list_.empty());
+      ASSERT_EQ(121u, result.doc_list_[0].key());
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Phase 6: reopen with shared mmap to confirm Phase 5's open/close left
+    // the file intact.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(
+          0, index->Open(index_name, {StorageOptions::StorageType::kMMAP,
+                                      /*create_new=*/false, /*read_only=*/true,
+                                      /*copy_on_write=*/false}));
+      for (uint32_t i = 0; i < kNumVectors; ++i) {
+        auto target = make_vec(i);
+        VectorData query;
+        query.vector = DenseVector{target.data()};
+        SearchResult result;
+        ASSERT_EQ(0, index->Search(query, query_param, &result));
+        ASSERT_FALSE(result.doc_list_.empty());
+        ASSERT_EQ(100u + i, result.doc_list_[0].key());
+      }
+      ASSERT_EQ(0, index->Close());
+    }
+
+    zvec::test_util::RemoveTestFiles(index_name);
+  };
+
+  func(FlatIndexParamBuilder()
+           .WithMetricType(MetricType::kInnerProduct)
+           .WithDataType(DataType::DT_FP32)
+           .WithDimension(kDimension)
+           .WithIsSparse(false)
+           .Build(),
+       FlatQueryParamBuilder().with_topk(5).with_fetch_vector(false).build());
+
+  func(HNSWIndexParamBuilder()
+           .WithMetricType(MetricType::kInnerProduct)
+           .WithDataType(DataType::DT_FP32)
+           .WithDimension(kDimension)
+           .WithIsSparse(false)
+           .WithEFConstruction(100)
+           .Build(),
+       HNSWQueryParamBuilder()
+           .with_topk(5)
+           .with_fetch_vector(false)
+           .with_ef_search(20)
+           .build());
+
+  func(VamanaIndexParamBuilder()
+           .WithMetricType(MetricType::kInnerProduct)
+           .WithDataType(DataType::DT_FP32)
+           .WithDimension(kDimension)
+           .WithIsSparse(false)
+           .WithMaxDegree(32)
+           .WithSearchListSize(64)
+           .WithAlpha(1.2f)
+           .Build(),
+       VamanaQueryParamBuilder()
+           .with_topk(5)
+           .with_fetch_vector(false)
+           .with_ef_search(32)
+           .build());
+
+  // Flat-only durability check for COW mmap: writes performed under
+  // MAP_PRIVATE must be pwrite-flushed back and visible after a shared-mmap
+  // reopen. Flat is used because Add/Flush against a previously-built file is
+  // straightforward to reason about for this storage layer.
+  {
+    const std::string persist_index{"test_cow_persist.index"};
+    zvec::test_util::RemoveTestFiles(persist_index);
+    auto persist_param = FlatIndexParamBuilder()
+                             .WithMetricType(MetricType::kInnerProduct)
+                             .WithDataType(DataType::DT_FP32)
+                             .WithDimension(kDimension)
+                             .WithIsSparse(false)
+                             .Build();
+    auto persist_query =
+        FlatQueryParamBuilder().with_topk(5).with_fetch_vector(false).build();
+
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*persist_param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(0, index->Open(persist_index,
+                               {StorageOptions::StorageType::kMMAP,
+                                /*create_new=*/true, /*read_only=*/false,
+                                /*copy_on_write=*/false}));
+      auto v0 = make_vec(0);
+      VectorData vd;
+      vd.vector = DenseVector{v0.data()};
+      ASSERT_EQ(0, index->Add(vd, /*key=*/500));
+      ASSERT_EQ(0, index->Train());
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Add a new vector through COW mmap and explicitly Flush so
+    // dirty private pages are written back to the file.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*persist_param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(0, index->Open(persist_index,
+                               {StorageOptions::StorageType::kMMAP,
+                                /*create_new=*/false, /*read_only=*/false,
+                                /*copy_on_write=*/true}));
+      auto v1 = make_vec(1);
+      VectorData vd;
+      vd.vector = DenseVector{v1.data()};
+      ASSERT_EQ(0, index->Add(vd, /*key=*/501));
+      ASSERT_EQ(0, index->Flush());
+      ASSERT_EQ(0, index->Close());
+    }
+
+    // Reopen with shared mmap: the entry written in COW mode must be durable
+    // on disk.
+    {
+      auto index = IndexFactory::CreateAndInitIndex(*persist_param);
+      ASSERT_NE(nullptr, index);
+      ASSERT_EQ(0, index->Open(persist_index,
+                               {StorageOptions::StorageType::kMMAP,
+                                /*create_new=*/false, /*read_only=*/true,
+                                /*copy_on_write=*/false}));
+      auto target = make_vec(1);
+      VectorData query;
+      query.vector = DenseVector{target.data()};
+      SearchResult result;
+      ASSERT_EQ(0, index->Search(query, persist_query, &result));
+      ASSERT_FALSE(result.doc_list_.empty());
+      ASSERT_EQ(501u, result.doc_list_[0].key());
+
+      VectorDataBuffer fetched;
+      ASSERT_EQ(0, index->Fetch(501, &fetched));
+      auto *fetched_ptr = reinterpret_cast<const float *>(
+          std::get<DenseVectorBuffer>(fetched.vector_buffer).data.data());
+      ASSERT_FLOAT_EQ(1.0f, fetched_ptr[1 % kDimension]);
+      ASSERT_EQ(0, index->Close());
+    }
+    zvec::test_util::RemoveTestFiles(persist_index);
+  }
+}
+
 TEST(IndexInterface, BufferGeneral) {
   zvec::ailego::MemoryLimitPool::get_instance().init(100 * 1024 * 1024);
   constexpr uint32_t kDimension = 64;

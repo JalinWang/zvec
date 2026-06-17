@@ -17,6 +17,7 @@
 #include <zvec/core/framework/index_storage.h>
 #include <zvec/core/interface/index.h>
 #include "mixed_reducer/mixed_reducer_params.h"
+#include "utility/utility_params.h"
 
 namespace zvec::core_interface {
 
@@ -255,6 +256,16 @@ int Index::Open(const std::string &file_path, StorageOptions storage_options) {
   // storage_params.set("proxima.mmap_file.storage.memory_warmup", true);
   // storage_params.set("proxima.mmap_file.storage.segment_meta_capacity",
   // 1024);
+
+  storage_params.set(core::MMAPFILE_STORAGE_COPY_ON_WRITE,
+                     storage_options.copy_on_write);
+  // force_flush must be enabled with copy_on_write so that
+  // IndexMapping::flush() actually persists data written via file_.write() to
+  // disk; without it, data would be lost. See IndexMapping::flush() in
+  // index_mapping.cc.
+  storage_params.set(core::MMAPFILE_STORAGE_FORCE_FLUSH,
+                     storage_options.copy_on_write);
+
   switch (storage_options.type) {
     case StorageOptions::StorageType::kMMAP: {
       storage_ = core::IndexFactory::CreateStorage("MMapFileStorage");
