@@ -2854,6 +2854,10 @@ TEST(IndexInterface, GroupByUnsupportedIndexType) {
                        .WithNList(4)
                        .Build(),
                    IVFQueryParamBuilder().with_topk(100).build());
+
+  // DiskAnn does not support group_by either, but is not linked to this
+  // test binary. It is covered by the DB-layer GroupBySearchUnsupported test
+  // in vector_column_indexer_test.cc.
 }
 
 #if defined(__GNUC__) || defined(__GNUG__)

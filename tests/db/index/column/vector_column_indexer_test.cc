@@ -2842,6 +2842,51 @@ TEST(VectorColumnIndexerTest, GroupBySearchUnsupported) {
   // IVF does not support group_by
   run(std::make_shared<IVFIndexParams>(MetricType::IP, 4),
       std::make_shared<IVFQueryParams>(4));
+
+  // DiskAnn does not support group_by.
+  // The DiskAnn plugin (libzvec_diskann_plugin.so) may not be available on
+  // every host, so guard the test and skip when the index cannot be created.
+  {
+    const std::string da_path = "test_groupby_unsupported_diskann.index";
+    constexpr uint32_t kDaDim = 4;
+    zvec::test_util::RemoveTestFiles(da_path);
+    auto da_indexer = std::make_shared<VectorColumnIndexer>(
+        da_path,
+        FieldSchema("test", DataType::VECTOR_FP32, kDaDim, false,
+                    std::make_shared<DiskAnnIndexParams>(MetricType::IP)));
+    auto da_open_status =
+        da_indexer->Open(vector_column_params::ReadOptions{true, true});
+    if (da_open_status.ok()) {
+      constexpr uint32_t kDaNumDocs = 12;
+      constexpr uint32_t kDaNumGroups = 3;
+      constexpr uint32_t kDaGroupTopk = 2;
+      for (uint32_t i = 0; i < kDaNumDocs; ++i) {
+        auto vec = std::vector<float>(kDaDim, static_cast<float>(i));
+        auto data = vector_column_params::VectorData{
+            vector_column_params::DenseVector{vec.data()}};
+        ASSERT_TRUE(da_indexer->Insert(data, i).ok());
+      }
+
+      auto da_qvec = std::vector<float>(kDaDim, 1.0f);
+      auto da_query = vector_column_params::VectorData{
+          vector_column_params::DenseVector{da_qvec.data()}};
+      vector_column_params::QueryParams da_qp;
+      da_qp.topk = 100;
+      da_qp.filter = nullptr;
+      da_qp.fetch_vector = false;
+      da_qp.query_params = std::make_shared<DiskAnnQueryParams>();
+      da_qp.group_by = std::make_unique<vector_column_params::GroupByParams>(
+          kDaGroupTopk, kDaNumGroups, [&](uint64_t key) -> std::string {
+            return std::to_string(key % kDaNumGroups);
+          });
+
+      auto da_results = da_indexer->Search(da_query, da_qp);
+      ASSERT_FALSE(da_results.has_value())
+          << "group_by should be rejected for DiskAnn index";
+      da_indexer->Close();
+    }
+    zvec::test_util::RemoveTestFiles(da_path);
+  }
 }
 
 #if defined(__GNUC__) || defined(__GNUG__)
