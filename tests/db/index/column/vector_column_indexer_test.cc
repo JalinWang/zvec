@@ -2684,27 +2684,33 @@ TEST(VectorColumnIndexerTest, Refiner) {
 }
 
 // Test group_by search at the indexer (DB) layer.
-// Inserts multiple documents, sets group_by params on the query, and verifies
-// that the result is returned as GroupVectorIndexResults with correct groups.
+// Covers dense (flat, hnsw, diskann), sparse (hnsw_sparse), bf_pks, and
+// is_linear paths.
 TEST(VectorColumnIndexerTest, GroupBySearch) {
-  auto func = [&](const IndexParams::Ptr index_params,
-                  const QueryParams::Ptr query_params) {
-    const std::string index_file_path = "test_groupby_indexer.index";
-    constexpr uint32_t kDimension = 4;
-    constexpr uint32_t kNumDocs = 12;
-    constexpr uint32_t kNumGroups = 3;
-    constexpr uint32_t kGroupTopk = 2;
+  constexpr uint32_t kDimension = 4;
+  constexpr uint32_t kNumDocs = 12;
+  constexpr uint32_t kNumGroups = 3;
+  constexpr uint32_t kGroupTopk = 2;
 
+  // Helper: run group_by test for a dense index type
+  auto run_dense = [&](const IndexParams::Ptr index_params,
+                       const QueryParams::Ptr query_params,
+                       bool optional = false) {
+    const std::string index_file_path = "test_groupby_indexer.index";
     zvec::test_util::RemoveTestFiles(index_file_path);
 
     auto indexer = std::make_shared<VectorColumnIndexer>(
         index_file_path, FieldSchema("test", DataType::VECTOR_FP32, kDimension,
                                      false, index_params));
     ASSERT_TRUE(indexer);
-    ASSERT_TRUE(
-        indexer->Open(vector_column_params::ReadOptions{true, true}).ok());
+    auto open_status =
+        indexer->Open(vector_column_params::ReadOptions{true, true});
+    if (optional && !open_status.ok()) {
+      zvec::test_util::RemoveTestFiles(index_file_path);
+      return;  // skip when plugin unavailable
+    }
+    ASSERT_TRUE(open_status.ok());
 
-    // Insert kNumDocs documents. doc_id i gets vector [i, i, i, i].
     for (uint32_t i = 0; i < kNumDocs; ++i) {
       auto vector = std::vector<float>(kDimension, static_cast<float>(i));
       auto data = vector_column_params::VectorData{
@@ -2712,44 +2718,37 @@ TEST(VectorColumnIndexerTest, GroupBySearch) {
       ASSERT_TRUE(indexer->Insert(data, i).ok());
     }
 
-    // Search with group_by
     auto query_vector = std::vector<float>(kDimension, 1.0f);
     auto query = vector_column_params::VectorData{
         vector_column_params::DenseVector{query_vector.data()}};
-    vector_column_params::QueryParams indexer_query_params;
-    indexer_query_params.topk = 100;
-    indexer_query_params.filter = nullptr;
-    indexer_query_params.fetch_vector = false;
-    indexer_query_params.query_params = query_params;
-    indexer_query_params.group_by =
-        std::make_unique<vector_column_params::GroupByParams>(
-            kGroupTopk, kNumGroups, [&](uint64_t key) -> std::string {
-              return std::to_string(key % kNumGroups);
-            });
+    vector_column_params::QueryParams qp;
+    qp.topk = 100;
+    qp.filter = nullptr;
+    qp.fetch_vector = false;
+    qp.query_params = query_params;
+    qp.group_by = std::make_unique<vector_column_params::GroupByParams>(
+        kGroupTopk, kNumGroups, [&](uint64_t key) -> std::string {
+          return std::to_string(key % kNumGroups);
+        });
 
-    auto results = indexer->Search(query, indexer_query_params);
+    auto results = indexer->Search(query, qp);
     ASSERT_TRUE(results.has_value());
 
-    // The result should be GroupVectorIndexResults
     auto group_results =
         dynamic_cast<GroupVectorIndexResults *>(results.value().get());
     ASSERT_TRUE(group_results) << "Expected GroupVectorIndexResults";
     ASSERT_EQ(kNumGroups, group_results->groups().size());
 
-    // Verify each group
     std::set<std::string> group_ids;
     for (const auto &group : group_results->groups()) {
       group_ids.insert(group.group_id());
       ASSERT_LE(group.docs().size(), kGroupTopk);
       ASSERT_GE(group.docs().size(), 1u);
     }
-
     for (uint32_t g = 0; g < kNumGroups; ++g) {
       ASSERT_TRUE(group_ids.count(std::to_string(g)) > 0)
           << "Missing group: " << g;
     }
-
-    // Verify docs belong to correct group and are sorted by score
     for (const auto &group : group_results->groups()) {
       uint32_t expected_mod = std::stoul(group.group_id());
       for (const auto &doc : group.docs()) {
@@ -2762,7 +2761,6 @@ TEST(VectorColumnIndexerTest, GroupBySearch) {
       }
     }
 
-    // Verify iterator works correctly
     auto iter = group_results->create_iterator();
     size_t total_docs = 0;
     while (iter->valid()) {
@@ -2775,10 +2773,143 @@ TEST(VectorColumnIndexerTest, GroupBySearch) {
     zvec::test_util::RemoveTestFiles(index_file_path);
   };
 
-  func(std::make_shared<FlatIndexParams>(MetricType::IP),
-       std::make_shared<QueryParams>(IndexType::FLAT));
-  func(std::make_shared<HnswIndexParams>(MetricType::IP, 10, 100),
-       std::make_shared<HnswQueryParams>(300));
+  // 1. Dense graph search
+  run_dense(std::make_shared<FlatIndexParams>(MetricType::IP),
+            std::make_shared<QueryParams>(IndexType::FLAT));
+  run_dense(std::make_shared<HnswIndexParams>(MetricType::IP, 10, 100),
+            std::make_shared<HnswQueryParams>(300));
+  run_dense(std::make_shared<DiskAnnIndexParams>(MetricType::IP),
+            std::make_shared<DiskAnnQueryParams>(), true);
+
+  // 2. Dense is_linear (brute force via HNSW)
+  {
+    auto hnsw_linear_qp = std::make_shared<HnswQueryParams>(300);
+    hnsw_linear_qp->set_is_linear(true);
+    run_dense(std::make_shared<HnswIndexParams>(MetricType::IP, 10, 100),
+              hnsw_linear_qp);
+  }
+
+  // 3. Dense bf_pks (brute force with primary keys)
+  {
+    const std::string index_file_path = "test_groupby_bfpks.index";
+    zvec::test_util::RemoveTestFiles(index_file_path);
+
+    auto indexer = std::make_shared<VectorColumnIndexer>(
+        index_file_path,
+        FieldSchema(
+            "test", DataType::VECTOR_FP32, kDimension, false,
+            std::make_shared<HnswIndexParams>(MetricType::IP, 10, 100)));
+    ASSERT_TRUE(indexer);
+    ASSERT_TRUE(
+        indexer->Open(vector_column_params::ReadOptions{true, true}).ok());
+
+    for (uint32_t i = 0; i < kNumDocs; ++i) {
+      auto vector = std::vector<float>(kDimension, static_cast<float>(i));
+      auto data = vector_column_params::VectorData{
+          vector_column_params::DenseVector{vector.data()}};
+      ASSERT_TRUE(indexer->Insert(data, i).ok());
+    }
+
+    auto query_vector = std::vector<float>(kDimension, 1.0f);
+    auto query = vector_column_params::VectorData{
+        vector_column_params::DenseVector{query_vector.data()}};
+    vector_column_params::QueryParams qp;
+    qp.topk = 100;
+    qp.filter = nullptr;
+    qp.fetch_vector = false;
+    qp.query_params = std::make_shared<HnswQueryParams>(300);
+    qp.bf_pks = {std::vector<uint64_t>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}};
+    qp.group_by = std::make_unique<vector_column_params::GroupByParams>(
+        kGroupTopk, kNumGroups, [&](uint64_t key) -> std::string {
+          return std::to_string(key % kNumGroups);
+        });
+
+    auto results = indexer->Search(query, qp);
+    ASSERT_TRUE(results.has_value());
+
+    auto group_results =
+        dynamic_cast<GroupVectorIndexResults *>(results.value().get());
+    ASSERT_TRUE(group_results) << "Expected GroupVectorIndexResults";
+    ASSERT_EQ(kNumGroups, group_results->groups().size());
+
+    for (const auto &group : group_results->groups()) {
+      uint32_t expected_mod = std::stoul(group.group_id());
+      for (const auto &doc : group.docs()) {
+        ASSERT_EQ(expected_mod, doc.key() % kNumGroups)
+            << "Doc " << doc.key() << " in wrong group " << group.group_id();
+      }
+    }
+
+    indexer->Close();
+    zvec::test_util::RemoveTestFiles(index_file_path);
+  }
+
+  // 4. Sparse (hnsw_sparse)
+  {
+    constexpr uint32_t kSparseCount = 5;
+    const std::string index_file_path = "test_groupby_sparse.index";
+    zvec::test_util::RemoveTestFiles(index_file_path);
+
+    auto indexer = std::make_shared<VectorColumnIndexer>(
+        index_file_path,
+        FieldSchema(
+            "test", DataType::SPARSE_VECTOR_FP32, false,
+            std::make_shared<HnswIndexParams>(MetricType::IP, 10, 100)));
+    ASSERT_TRUE(indexer);
+    ASSERT_TRUE(
+        indexer->Open(vector_column_params::ReadOptions{true, true}).ok());
+
+    for (uint32_t i = 0; i < kNumDocs; ++i) {
+      std::vector<uint32_t> indices(kSparseCount);
+      std::vector<float> values(kSparseCount);
+      for (uint32_t j = 0; j < kSparseCount; ++j) {
+        indices[j] = i * kSparseCount + j;
+        values[j] = static_cast<float>(i + 1);
+      }
+      vector_column_params::SparseVector sparse_vec{
+          kSparseCount, indices.data(), values.data()};
+      auto data = vector_column_params::VectorData{std::move(sparse_vec)};
+      ASSERT_TRUE(indexer->Insert(data, i).ok());
+    }
+
+    std::vector<uint32_t> q_indices(kSparseCount);
+    std::vector<float> q_values(kSparseCount, 1.0f);
+    for (uint32_t j = 0; j < kSparseCount; ++j) {
+      q_indices[j] = j;
+    }
+    vector_column_params::SparseVector q_sparse{kSparseCount, q_indices.data(),
+                                                q_values.data()};
+    auto query = vector_column_params::VectorData{std::move(q_sparse)};
+
+    vector_column_params::QueryParams qp;
+    qp.topk = 100;
+    qp.filter = nullptr;
+    qp.fetch_vector = false;
+    qp.group_by = std::make_unique<vector_column_params::GroupByParams>(
+        kGroupTopk, kNumGroups, [&](uint64_t key) -> std::string {
+          return std::to_string(key % kNumGroups);
+        });
+
+    auto results = indexer->Search(query, qp);
+    ASSERT_TRUE(results.has_value());
+
+    auto group_results =
+        dynamic_cast<GroupVectorIndexResults *>(results.value().get());
+    ASSERT_TRUE(group_results) << "Expected GroupVectorIndexResults for sparse";
+    ASSERT_EQ(kNumGroups, group_results->groups().size());
+
+    for (const auto &group : group_results->groups()) {
+      uint32_t expected_mod = std::stoul(group.group_id());
+      for (const auto &doc : group.docs()) {
+        ASSERT_EQ(expected_mod, doc.key() % kNumGroups)
+            << "Sparse doc " << doc.key() << " in wrong group "
+            << group.group_id();
+      }
+    }
+
+    indexer->Close();
+    zvec::test_util::RemoveTestFiles(index_file_path);
+  }
 }
 
 // Verify that when an unsupported index type (IVF) is used with group_by,
@@ -2843,50 +2974,6 @@ TEST(VectorColumnIndexerTest, GroupBySearchUnsupported) {
   run(std::make_shared<IVFIndexParams>(MetricType::IP, 4),
       std::make_shared<IVFQueryParams>(4));
 
-  // DiskAnn does not support group_by.
-  // The DiskAnn plugin (libzvec_diskann_plugin.so) may not be available on
-  // every host, so guard the test and skip when the index cannot be created.
-  {
-    const std::string da_path = "test_groupby_unsupported_diskann.index";
-    constexpr uint32_t kDaDim = 4;
-    zvec::test_util::RemoveTestFiles(da_path);
-    auto da_indexer = std::make_shared<VectorColumnIndexer>(
-        da_path,
-        FieldSchema("test", DataType::VECTOR_FP32, kDaDim, false,
-                    std::make_shared<DiskAnnIndexParams>(MetricType::IP)));
-    auto da_open_status =
-        da_indexer->Open(vector_column_params::ReadOptions{true, true});
-    if (da_open_status.ok()) {
-      constexpr uint32_t kDaNumDocs = 12;
-      constexpr uint32_t kDaNumGroups = 3;
-      constexpr uint32_t kDaGroupTopk = 2;
-      for (uint32_t i = 0; i < kDaNumDocs; ++i) {
-        auto vec = std::vector<float>(kDaDim, static_cast<float>(i));
-        auto data = vector_column_params::VectorData{
-            vector_column_params::DenseVector{vec.data()}};
-        ASSERT_TRUE(da_indexer->Insert(data, i).ok());
-      }
-
-      auto da_qvec = std::vector<float>(kDaDim, 1.0f);
-      auto da_query = vector_column_params::VectorData{
-          vector_column_params::DenseVector{da_qvec.data()}};
-      vector_column_params::QueryParams da_qp;
-      da_qp.topk = 100;
-      da_qp.filter = nullptr;
-      da_qp.fetch_vector = false;
-      da_qp.query_params = std::make_shared<DiskAnnQueryParams>();
-      da_qp.group_by = std::make_unique<vector_column_params::GroupByParams>(
-          kDaGroupTopk, kDaNumGroups, [&](uint64_t key) -> std::string {
-            return std::to_string(key % kDaNumGroups);
-          });
-
-      auto da_results = da_indexer->Search(da_query, da_qp);
-      ASSERT_FALSE(da_results.has_value())
-          << "group_by should be rejected for DiskAnn index";
-      da_indexer->Close();
-    }
-    zvec::test_util::RemoveTestFiles(da_path);
-  }
 }
 
 #if defined(__GNUC__) || defined(__GNUG__)

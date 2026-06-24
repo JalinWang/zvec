@@ -269,11 +269,6 @@ int DiskAnnIndex::_prepare_for_search(
     return core::IndexError_Runtime;
   }
 
-  if (search_param->group_by_param && search_param->group_by_param->group_by) {
-    LOG_ERROR("group_by search is not supported for DiskAnn index");
-    return core::IndexError_Unsupported;
-  }
-
   context->set_topk(diskann_search_param->topk);
   context->set_fetch_vector(diskann_search_param->fetch_vector);
 
@@ -284,6 +279,7 @@ int DiskAnnIndex::_prepare_for_search(
       core::PARAM_DISKANN_SEARCHER_LIST_SIZE,
       std::max(diskann_search_param->topk, diskann_search_param->list_size));
   context->update(params);
+  _set_group_by_on_context(search_param, context);
 
   return 0;
 }
