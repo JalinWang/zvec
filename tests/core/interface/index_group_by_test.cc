@@ -106,6 +106,18 @@ BaseIndexQueryParam::Pointer FlatQuery(bool fetch_vector = false) {
       .build();
 }
 
+BaseIndexQueryParam::Pointer FlatQuery(bool fetch_vector, bool is_linear,
+                                       bool with_bf_pks) {
+  auto builder = FlatQueryParamBuilder()
+                     .with_topk(kSearchTopk)
+                     .with_fetch_vector(fetch_vector)
+                     .with_is_linear(is_linear);
+  if (with_bf_pks) {
+    builder.with_bf_pks(AllPks());
+  }
+  return builder.build();
+}
+
 BaseIndexQueryParam::Pointer HnswQuery(bool fetch_vector = false,
                                        bool is_linear = false,
                                        bool with_bf_pks = false) {
@@ -155,11 +167,45 @@ BaseIndexParam::Pointer DenseHnswRabitqParam(uint32_t dimension) {
       .Build();
 }
 
-BaseIndexQueryParam::Pointer HnswRabitqQuery() {
-  return HNSWRabitqQueryParamBuilder()
-      .with_topk(kSearchTopk)
-      .with_ef_search(kSearchTopk)
-      .build();
+BaseIndexQueryParam::Pointer HnswRabitqQuery(bool fetch_vector = false,
+                                             bool is_linear = false,
+                                             bool with_bf_pks = false) {
+  auto builder = HNSWRabitqQueryParamBuilder()
+                     .with_topk(kSearchTopk)
+                     .with_ef_search(kSearchTopk)
+                     .with_fetch_vector(fetch_vector)
+                     .with_is_linear(is_linear);
+  if (with_bf_pks) {
+    builder.with_bf_pks(AllPks());
+  }
+  return builder.build();
+}
+#endif
+
+#if DISKANN_SUPPORTED
+BaseIndexParam::Pointer DenseDiskAnnParam(uint32_t dimension = kDimension) {
+  return DiskAnnIndexParamBuilder()
+      .WithMetricType(MetricType::kInnerProduct)
+      .WithDataType(DataType::DT_FP32)
+      .WithDimension(dimension)
+      .WithIsSparse(false)
+      .WithMaxDegree(32)
+      .WithListSize(kSearchTopk)
+      .Build();
+}
+
+BaseIndexQueryParam::Pointer DiskAnnQuery(bool fetch_vector = false,
+                                          bool is_linear = false,
+                                          bool with_bf_pks = false) {
+  auto query = std::make_shared<DiskAnnQueryParam>();
+  query->topk = kSearchTopk;
+  query->list_size = kSearchTopk;
+  query->fetch_vector = fetch_vector;
+  query->is_linear = is_linear;
+  if (with_bf_pks) {
+    query->bf_pks = AllPks();
+  }
+  return query;
 }
 #endif
 
@@ -182,18 +228,27 @@ class GroupByInterfaceTest : public ::testing::Test {
 
   void Run(const GroupByCase &test_case, bool expect_error) {
     const std::string index_name = "test_groupby_" + test_case.name;
+    const std::string source_index_name = index_name + "_source";
     zvec::test_util::RemoveTestFiles(index_name + "*");
+    zvec::test_util::RemoveTestFiles(source_index_name + "*");
+
+    auto source = IndexFactory::CreateAndInitIndex(*FlatSourceParam(test_case));
+    ASSERT_NE(nullptr, source) << test_case.name;
+    ASSERT_EQ(0, source->Open(source_index_name,
+                              {StorageOptions::StorageType::kMMAP, true}))
+        << test_case.name;
+
+    for (uint32_t i = 0; i < kNumDocs; ++i) {
+      AddDoc(source, i, test_case);
+    }
+    ASSERT_EQ(0, source->Train()) << test_case.name;
 
     auto index = IndexFactory::CreateAndInitIndex(*test_case.index_param);
     ASSERT_NE(nullptr, index) << test_case.name;
     ASSERT_EQ(
         0, index->Open(index_name, {StorageOptions::StorageType::kMMAP, true}))
         << test_case.name;
-
-    for (uint32_t i = 0; i < kNumDocs; ++i) {
-      AddDoc(index, i, test_case);
-    }
-    ASSERT_EQ(0, index->Train()) << test_case.name;
+    ASSERT_EQ(0, index->Merge({source}, IndexFilter())) << test_case.name;
 
     auto query_param = test_case.query_param->Clone();
     AttachGroupBy(query_param);
@@ -209,7 +264,16 @@ class GroupByInterfaceTest : public ::testing::Test {
     }
 
     ASSERT_EQ(0, index->Close()) << test_case.name;
+    ASSERT_EQ(0, source->Close()) << test_case.name;
     zvec::test_util::RemoveTestFiles(index_name + "*");
+    zvec::test_util::RemoveTestFiles(source_index_name + "*");
+  }
+
+  BaseIndexParam::Pointer FlatSourceParam(const GroupByCase &test_case) {
+    if (test_case.is_sparse) {
+      return SparseFlatParam();
+    }
+    return DenseFlatParam(test_case.dimension);
   }
 
   void AddDoc(const Index::Pointer &index, uint32_t key,
@@ -345,6 +409,15 @@ class GroupByInterfaceTest : public ::testing::Test {
 TEST_F(GroupByInterfaceTest, Dense) {
   std::vector<GroupByCase> cases{
       {"dense_flat_graph", DenseFlatParam(), FlatQuery()},
+      {"dense_flat_linear", DenseFlatParam(),
+       FlatQuery(/*fetch_vector=*/false, /*is_linear=*/true,
+                 /*with_bf_pks=*/false)},
+      {"dense_flat_bf_pks", DenseFlatParam(),
+       FlatQuery(/*fetch_vector=*/false, /*is_linear=*/false,
+                 /*with_bf_pks=*/true)},
+      {"dense_flat_fetch_vector", DenseFlatParam(),
+       FlatQuery(/*fetch_vector=*/true, /*is_linear=*/false,
+                 /*with_bf_pks=*/false)},
       {"dense_hnsw_graph", DenseHnswParam(), HnswQuery()},
       {"dense_hnsw_linear", DenseHnswParam(),
        HnswQuery(/*fetch_vector=*/false, /*is_linear=*/true)},
@@ -356,6 +429,26 @@ TEST_F(GroupByInterfaceTest, Dense) {
 #if RABITQ_SUPPORTED
       {"dense_hnsw_rabitq_graph", DenseHnswRabitqParam(64), HnswRabitqQuery(),
        /*is_sparse=*/false, /*dimension=*/64},
+      {"dense_hnsw_rabitq_linear", DenseHnswRabitqParam(64),
+       HnswRabitqQuery(/*fetch_vector=*/false, /*is_linear=*/true),
+       /*is_sparse=*/false, /*dimension=*/64},
+      {"dense_hnsw_rabitq_bf_pks", DenseHnswRabitqParam(64),
+       HnswRabitqQuery(/*fetch_vector=*/false, /*is_linear=*/false,
+                       /*with_bf_pks=*/true),
+       /*is_sparse=*/false, /*dimension=*/64},
+      {"dense_hnsw_rabitq_fetch_vector", DenseHnswRabitqParam(64),
+       HnswRabitqQuery(/*fetch_vector=*/true), /*is_sparse=*/false,
+       /*dimension=*/64},
+#endif
+#if DISKANN_SUPPORTED
+      {"dense_diskann_graph", DenseDiskAnnParam(), DiskAnnQuery()},
+      {"dense_diskann_linear", DenseDiskAnnParam(),
+       DiskAnnQuery(/*fetch_vector=*/false, /*is_linear=*/true)},
+      {"dense_diskann_bf_pks", DenseDiskAnnParam(),
+       DiskAnnQuery(/*fetch_vector=*/false, /*is_linear=*/false,
+                    /*with_bf_pks=*/true)},
+      {"dense_diskann_fetch_vector", DenseDiskAnnParam(),
+       DiskAnnQuery(/*fetch_vector=*/true)},
 #endif
   };
 
