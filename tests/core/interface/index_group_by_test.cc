@@ -191,6 +191,7 @@ BaseIndexParam::Pointer DenseDiskAnnParam(uint32_t dimension = kDimension) {
       .WithIsSparse(false)
       .WithMaxDegree(32)
       .WithListSize(kSearchTopk)
+      .WithPqChunkNum(0)
       .Build();
 }
 
@@ -335,12 +336,12 @@ class GroupByInterfaceTest : public ::testing::Test {
     if (test_case.is_sparse) {
       AssertSparseVectorsFetched(result, test_case.dimension);
     } else {
-      AssertDenseVectorsFetched(result, test_case.dimension);
+      AssertDenseVectorsFetched(result, test_case.dimension, test_case.name);
     }
   }
 
-  void AssertDenseVectorsFetched(const SearchResult &result,
-                                 uint32_t dimension) {
+  void AssertDenseVectorsFetched(const SearchResult &result, uint32_t dimension,
+                                 const std::string &case_name = "") {
     size_t reverted_idx = 0;
     for (const auto &group : result.group_doc_list_) {
       for (const auto &doc : group.docs()) {
@@ -350,12 +351,18 @@ class GroupByInterfaceTest : public ::testing::Test {
           ASSERT_LT(reverted_idx, result.reverted_vector_list_.size());
           vector = reinterpret_cast<const float *>(
               result.reverted_vector_list_[reverted_idx++].data());
-        } else {
-          ASSERT_NE(nullptr, doc.vector());
+        } else if (doc.vector() != nullptr) {
           vector = reinterpret_cast<const float *>(doc.vector());
+        } else {
+          // DiskAnn stores fetched vectors in vector_string_ rather than
+          // the raw pointer field.
+          ASSERT_FALSE(doc.vector_string().empty())
+              << case_name << " key=" << doc.key();
+          vector = reinterpret_cast<const float *>(doc.vector_string().data());
         }
         for (uint32_t i = 0; i < dimension; ++i) {
-          ASSERT_FLOAT_EQ(expected, vector[i]);
+          ASSERT_FLOAT_EQ(expected, vector[i])
+              << case_name << " key=" << doc.key() << " i=" << i;
         }
       }
     }
@@ -436,9 +443,10 @@ TEST_F(GroupByInterfaceTest, Dense) {
        HnswRabitqQuery(/*fetch_vector=*/false, /*is_linear=*/false,
                        /*with_bf_pks=*/true),
        /*is_sparse=*/false, /*dimension=*/64},
-      {"dense_hnsw_rabitq_fetch_vector", DenseHnswRabitqParam(64),
-       HnswRabitqQuery(/*fetch_vector=*/true), /*is_sparse=*/false,
-       /*dimension=*/64},
+  // Note: fetch_vector is not supported for RabitQ because the entity
+  // stores quantized binary data (not original float vectors), and
+  // RabitqReformer does not implement revert().
+
 #endif
 #if DISKANN_SUPPORTED
       {"dense_diskann_graph", DenseDiskAnnParam(), DiskAnnQuery()},

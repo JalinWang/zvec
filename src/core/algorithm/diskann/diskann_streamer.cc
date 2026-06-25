@@ -142,6 +142,11 @@ int DiskAnnStreamer::search_impl(const void *query, const IndexQueryMeta &qmeta,
   // undersized buffers. Recreate it to ensure correct buffer allocations.
   if (ctx->magic() != magic_) {
     uint32_t saved_topk = ctx->topk();
+    bool saved_fetch_vector = ctx->fetch_vector();
+    uint32_t saved_group_num = ctx->group_num();
+    uint32_t saved_group_topk = ctx->group_topk();
+    auto saved_group_by = ctx->group_by();
+    auto saved_filter = ctx->filter();
     context = create_context();
     if (!context) {
       LOG_ERROR("Failed to recreate context for current streamer");
@@ -149,6 +154,16 @@ int DiskAnnStreamer::search_impl(const void *query, const IndexQueryMeta &qmeta,
     }
     ctx = dynamic_cast<DiskAnnContext *>(context.get());
     ctx->set_topk(saved_topk);
+    ctx->set_fetch_vector(saved_fetch_vector);
+    if (saved_group_num > 0) {
+      ctx->set_group_params(saved_group_num, saved_group_topk);
+    }
+    if (saved_group_by.is_valid()) {
+      ctx->set_group_by(saved_group_by);
+    }
+    if (saved_filter.is_valid()) {
+      ctx->set_filter(saved_filter);
+    }
   }
 
   ctx->clear();
@@ -185,6 +200,11 @@ int DiskAnnStreamer::search_bf_impl(const void *query,
     //! context is created by another searcher or streamer, recreate it
     //! to ensure buffers are correctly sized for this index's parameters.
     uint32_t saved_topk = ctx->topk();
+    bool saved_fetch_vector = ctx->fetch_vector();
+    uint32_t saved_group_num = ctx->group_num();
+    uint32_t saved_group_topk = ctx->group_topk();
+    auto saved_group_by = ctx->group_by();
+    auto saved_filter = ctx->filter();
     context = create_context();
     if (!context) {
       LOG_ERROR("Failed to recreate context for current streamer");
@@ -192,6 +212,16 @@ int DiskAnnStreamer::search_bf_impl(const void *query,
     }
     ctx = dynamic_cast<DiskAnnContext *>(context.get());
     ctx->set_topk(saved_topk);
+    ctx->set_fetch_vector(saved_fetch_vector);
+    if (saved_group_num > 0) {
+      ctx->set_group_params(saved_group_num, saved_group_topk);
+    }
+    if (saved_group_by.is_valid()) {
+      ctx->set_group_by(saved_group_by);
+    }
+    if (saved_filter.is_valid()) {
+      ctx->set_filter(saved_filter);
+    }
   }
 
   ctx->clear();
@@ -238,6 +268,11 @@ int DiskAnnStreamer::search_bf_by_p_keys_impl(
     //! context is created by another searcher or streamer, recreate it
     //! to ensure buffers are correctly sized for this index's parameters.
     uint32_t saved_topk = ctx->topk();
+    bool saved_fetch_vector = ctx->fetch_vector();
+    uint32_t saved_group_num = ctx->group_num();
+    uint32_t saved_group_topk = ctx->group_topk();
+    auto saved_group_by = ctx->group_by();
+    auto saved_filter = ctx->filter();
     context = create_context();
     if (!context) {
       LOG_ERROR("Failed to recreate context for current streamer");
@@ -245,6 +280,16 @@ int DiskAnnStreamer::search_bf_by_p_keys_impl(
     }
     ctx = dynamic_cast<DiskAnnContext *>(context.get());
     ctx->set_topk(saved_topk);
+    ctx->set_fetch_vector(saved_fetch_vector);
+    if (saved_group_num > 0) {
+      ctx->set_group_params(saved_group_num, saved_group_topk);
+    }
+    if (saved_group_by.is_valid()) {
+      ctx->set_group_by(saved_group_by);
+    }
+    if (saved_filter.is_valid()) {
+      ctx->set_filter(saved_filter);
+    }
   }
 
   ctx->clear();
