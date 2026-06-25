@@ -275,7 +275,6 @@ int DiskAnnIndex::_prepare_for_search(
   }
 
   context->set_topk(diskann_search_param->topk);
-  context->set_fetch_vector(diskann_search_param->fetch_vector);
 
   // Propagate the query-time beam-search list size into the context. Must be
   // at least topk to keep enough candidates for a correct result.
