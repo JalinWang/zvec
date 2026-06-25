@@ -15,8 +15,6 @@
 #include <cmath>
 #include <functional>
 #include <iostream>
-#include <numeric>
-#include <set>
 #include <unordered_map>
 #include <gtest/gtest.h>
 #include "tests/test_util.h"
