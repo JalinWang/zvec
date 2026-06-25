@@ -510,10 +510,6 @@ int DiskAnnIndexer::linear_search(DiskAnnContext *ctx) {
 
   stats.total_us += query_timer.micro_seconds();
 
-  if (ctx->group_by_search()) {
-    populate_group_topk_heaps(ctx);
-  }
-
   return 0;
 }
 
@@ -651,10 +647,6 @@ int DiskAnnIndexer::keys_search(const std::vector<uint64_t> &keys,
 
   stats.total_us += query_timer.micro_seconds();
 
-  if (ctx->group_by_search()) {
-    populate_group_topk_heaps(ctx);
-  }
-
   return 0;
 }
 
@@ -732,33 +724,6 @@ int DiskAnnIndexer::get_vector(diskann_id_t id, IndexContext::Pointer &context,
   }
 
   return 0;
-}
-
-void DiskAnnIndexer::populate_group_topk_heaps(DiskAnnContext *ctx) {
-  if (!ctx->group_by().is_valid()) {
-    return;
-  }
-
-  std::function<std::string(diskann_id_t)> group_by = [&](diskann_id_t id) {
-    return ctx->group_by()(get_key(id));
-  };
-
-  auto &topk_heap = ctx->topk_heap();
-  std::map<std::string, TopkHeap> &group_topk_heaps = ctx->group_topk_heaps();
-
-  for (uint32_t i = 0; i < topk_heap.size(); ++i) {
-    diskann_id_t id = topk_heap[i].first;
-    auto info = topk_heap[i].second;
-
-    std::string group_id = group_by(id);
-
-    auto &group_topk_heap = group_topk_heaps[group_id];
-    if (group_topk_heap.empty()) {
-      group_topk_heap.limit(ctx->group_topk());
-    }
-
-    group_topk_heap.emplace(id, info);
-  }
 }
 
 int DiskAnnIndexer::knn_search(DiskAnnContext *ctx) {

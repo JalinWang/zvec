@@ -21,38 +21,6 @@
 namespace zvec {
 namespace core {
 
-namespace {
-
-struct SavedContextState {
-  uint32_t topk;
-  bool fetch_vector;
-  uint32_t group_num;
-  uint32_t group_topk;
-  IndexGroupBy group_by;
-  IndexFilter filter;
-};
-
-SavedContextState save_context_state(const DiskAnnContext *ctx) {
-  return {ctx->topk(),       ctx->fetch_vector(), ctx->group_num(),
-          ctx->group_topk(), ctx->group_by(),     ctx->filter()};
-}
-
-void restore_context_state(DiskAnnContext *ctx, const SavedContextState &s) {
-  ctx->set_topk(s.topk);
-  ctx->set_fetch_vector(s.fetch_vector);
-  if (s.group_num > 0) {
-    ctx->set_group_params(s.group_num, s.group_topk);
-  }
-  if (s.group_by.is_valid()) {
-    ctx->set_group_by(s.group_by);
-  }
-  if (s.filter.is_valid()) {
-    ctx->set_filter(s.filter);
-  }
-}
-
-}  // namespace
-
 DiskAnnStreamer::DiskAnnStreamer() {}
 
 DiskAnnStreamer::~DiskAnnStreamer() {}
@@ -173,14 +141,14 @@ int DiskAnnStreamer::search_impl(const void *query, const IndexQueryMeta &qmeta,
   // with different element sizes (e.g., fp16 vs fp32), the cached context has
   // undersized buffers. Recreate it to ensure correct buffer allocations.
   if (ctx->magic() != magic_) {
-    auto saved_ctx = save_context_state(ctx);
+    uint32_t saved_topk = ctx->topk();
     context = create_context();
     if (!context) {
       LOG_ERROR("Failed to recreate context for current streamer");
       return IndexError_Runtime;
     }
     ctx = dynamic_cast<DiskAnnContext *>(context.get());
-    restore_context_state(ctx, saved_ctx);
+    ctx->set_topk(saved_topk);
   }
 
   ctx->clear();
@@ -216,14 +184,14 @@ int DiskAnnStreamer::search_bf_impl(const void *query,
   if (ctx->magic() != magic_) {
     //! context is created by another searcher or streamer, recreate it
     //! to ensure buffers are correctly sized for this index's parameters.
-    auto saved_ctx = save_context_state(ctx);
+    uint32_t saved_topk = ctx->topk();
     context = create_context();
     if (!context) {
       LOG_ERROR("Failed to recreate context for current streamer");
       return IndexError_Runtime;
     }
     ctx = dynamic_cast<DiskAnnContext *>(context.get());
-    restore_context_state(ctx, saved_ctx);
+    ctx->set_topk(saved_topk);
   }
 
   ctx->clear();
@@ -269,14 +237,14 @@ int DiskAnnStreamer::search_bf_by_p_keys_impl(
   if (ctx->magic() != magic_) {
     //! context is created by another searcher or streamer, recreate it
     //! to ensure buffers are correctly sized for this index's parameters.
-    auto saved_ctx = save_context_state(ctx);
+    uint32_t saved_topk = ctx->topk();
     context = create_context();
     if (!context) {
       LOG_ERROR("Failed to recreate context for current streamer");
       return IndexError_Runtime;
     }
     ctx = dynamic_cast<DiskAnnContext *>(context.get());
-    restore_context_state(ctx, saved_ctx);
+    ctx->set_topk(saved_topk);
   }
 
   ctx->clear();

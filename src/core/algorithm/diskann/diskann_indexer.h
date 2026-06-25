@@ -48,9 +48,6 @@ class DiskAnnIndexer {
   int linear_search(DiskAnnContext *ctx);
   int keys_search(const std::vector<diskann_key_t> &keys, DiskAnnContext *ctx);
 
-  //! Populate group_topk_heaps from topk_heap when group_by is enabled
-  void populate_group_topk_heaps(DiskAnnContext *ctx);
-
   int get_vector(diskann_id_t id, IndexContext::Pointer &context,
                  std::string &vector);
 

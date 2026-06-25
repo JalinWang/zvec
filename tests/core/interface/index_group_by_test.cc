@@ -448,16 +448,6 @@ TEST_F(GroupByInterfaceTest, Dense) {
   // RabitqReformer does not implement revert().
 
 #endif
-#if DISKANN_SUPPORTED
-      {"dense_diskann_graph", DenseDiskAnnParam(), DiskAnnQuery()},
-      {"dense_diskann_linear", DenseDiskAnnParam(),
-       DiskAnnQuery(/*fetch_vector=*/false, /*is_linear=*/true)},
-      {"dense_diskann_bf_pks", DenseDiskAnnParam(),
-       DiskAnnQuery(/*fetch_vector=*/false, /*is_linear=*/false,
-                    /*with_bf_pks=*/true)},
-      {"dense_diskann_fetch_vector", DenseDiskAnnParam(),
-       DiskAnnQuery(/*fetch_vector=*/true)},
-#endif
   };
 
   for (const auto &test_case : cases) {
@@ -512,6 +502,16 @@ TEST_F(GroupByInterfaceTest, UnsupportedIndexTypes) {
            .WithNList(4)
            .Build(),
        IVFQueryParamBuilder().with_topk(kSearchTopk).build()},
+#if DISKANN_SUPPORTED
+      {"unsupported_diskann_graph", DenseDiskAnnParam(), DiskAnnQuery()},
+      {"unsupported_diskann_linear", DenseDiskAnnParam(),
+       DiskAnnQuery(/*fetch_vector=*/false, /*is_linear=*/true)},
+      {"unsupported_diskann_bf_pks", DenseDiskAnnParam(),
+       DiskAnnQuery(/*fetch_vector=*/false, /*is_linear=*/false,
+                    /*with_bf_pks=*/true)},
+      {"unsupported_diskann_fetch_vector", DenseDiskAnnParam(),
+       DiskAnnQuery(/*fetch_vector=*/true)},
+#endif
   };
 
   for (const auto &test_case : cases) {
