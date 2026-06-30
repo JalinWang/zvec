@@ -62,6 +62,20 @@ Result<IndexResults::Ptr> CombinedVectorColumnIndexer::Search(
   // For merging group_by results across blocks
   core::IndexGroupDocumentList merged_group_docs;
   std::unordered_map<std::string, size_t> group_merge_map;
+  std::vector<std::vector<std::string>> merged_reverted_vector_list;
+  std::vector<std::vector<std::string>> merged_reverted_sparse_values_list;
+
+  auto append_group_values =
+      [](std::vector<std::string> &merged_values,
+         std::vector<std::vector<std::string>> &sub_values, size_t group_idx) {
+        if (sub_values.empty() || group_idx >= sub_values.size()) {
+          return;
+        }
+        auto &values = sub_values[group_idx];
+        merged_values.insert(merged_values.end(),
+                             std::make_move_iterator(values.begin()),
+                             std::make_move_iterator(values.end()));
+      };
 
   // query_params.bf_pks is segment level, here we need to convert it to block
   // level
@@ -165,23 +179,39 @@ Result<IndexResults::Ptr> CombinedVectorColumnIndexer::Search(
     if (group_index_results != nullptr) {
       // Merge group results from this block
       auto &sub_groups = group_index_results->groups();
-      for (auto &group : sub_groups) {
+      auto &sub_reverted_vector_list =
+          group_index_results->reverted_vector_list();
+      auto &sub_reverted_sparse_values_list =
+          group_index_results->reverted_sparse_values_list();
+      for (size_t group_idx = 0; group_idx < sub_groups.size(); ++group_idx) {
+        auto &group = sub_groups[group_idx];
         // Adjust keys in group docs by block offset
         for (auto &doc : *group.mutable_docs()) {
           doc.set_key(block_offsets_[i] + doc.key());
         }
         // Merge into existing group or create new one
         auto it = group_merge_map.find(group.group_id());
+        size_t merged_group_idx = 0;
         if (it != group_merge_map.end()) {
-          auto &existing_docs = *merged_group_docs[it->second].mutable_docs();
+          merged_group_idx = it->second;
+          auto &existing_docs =
+              *merged_group_docs[merged_group_idx].mutable_docs();
           auto &new_docs = *group.mutable_docs();
           existing_docs.insert(existing_docs.end(),
                                std::make_move_iterator(new_docs.begin()),
                                std::make_move_iterator(new_docs.end()));
         } else {
-          group_merge_map[group.group_id()] = merged_group_docs.size();
+          merged_group_idx = merged_group_docs.size();
+          group_merge_map[group.group_id()] = merged_group_idx;
           merged_group_docs.emplace_back(std::move(group));
+          merged_reverted_vector_list.emplace_back();
+          merged_reverted_sparse_values_list.emplace_back();
         }
+        append_group_values(merged_reverted_vector_list[merged_group_idx],
+                            sub_reverted_vector_list, group_idx);
+        append_group_values(
+            merged_reverted_sparse_values_list[merged_group_idx],
+            sub_reverted_sparse_values_list, group_idx);
       }
       continue;
     }
@@ -217,26 +247,125 @@ Result<IndexResults::Ptr> CombinedVectorColumnIndexer::Search(
         (metric_type_ == MetricType::L2 || metric_type_ == MetricType::COSINE);
     uint32_t group_topk =
         query_params.group_by ? query_params.group_by->group_topk : 0;
-    for (auto &group : merged_group_docs) {
+    for (size_t group_idx = 0; group_idx < merged_group_docs.size();
+         ++group_idx) {
+      auto &group = merged_group_docs[group_idx];
       auto &docs = *group.mutable_docs();
-      std::sort(docs.begin(), docs.end(),
-                [lower_is_better](const core::IndexDocument &a,
-                                  const core::IndexDocument &b) {
-                  return lower_is_better ? a.score() < b.score()
-                                         : a.score() > b.score();
+      auto &reverted_vectors = merged_reverted_vector_list[group_idx];
+      auto &reverted_sparse_values =
+          merged_reverted_sparse_values_list[group_idx];
+      if (!reverted_vectors.empty() && reverted_vectors.size() != docs.size()) {
+        reverted_vectors.clear();
+      }
+      if (!reverted_sparse_values.empty() &&
+          reverted_sparse_values.size() != docs.size()) {
+        reverted_sparse_values.clear();
+      }
+
+      std::vector<size_t> indices(docs.size());
+      std::iota(indices.begin(), indices.end(), 0);
+      std::sort(indices.begin(), indices.end(),
+                [lower_is_better, &docs](size_t lhs, size_t rhs) {
+                  return lower_is_better ? docs[lhs].score() < docs[rhs].score()
+                                         : docs[lhs].score() > docs[rhs].score();
                 });
+
+      core::IndexDocumentList sorted_docs(docs.size());
+      std::vector<std::string> sorted_reverted_vectors;
+      std::vector<std::string> sorted_reverted_sparse_values;
+      if (!reverted_vectors.empty()) {
+        sorted_reverted_vectors.resize(reverted_vectors.size());
+      }
+      if (!reverted_sparse_values.empty()) {
+        sorted_reverted_sparse_values.resize(reverted_sparse_values.size());
+      }
+      for (size_t i = 0; i < indices.size(); ++i) {
+        sorted_docs[i] = std::move(docs[indices[i]]);
+        if (!reverted_vectors.empty()) {
+          sorted_reverted_vectors[i] =
+              std::move(reverted_vectors[indices[i]]);
+        }
+        if (!reverted_sparse_values.empty()) {
+          sorted_reverted_sparse_values[i] =
+              std::move(reverted_sparse_values[indices[i]]);
+        }
+      }
+      docs = std::move(sorted_docs);
+      if (!sorted_reverted_vectors.empty()) {
+        reverted_vectors = std::move(sorted_reverted_vectors);
+      }
+      if (!sorted_reverted_sparse_values.empty()) {
+        reverted_sparse_values = std::move(sorted_reverted_sparse_values);
+      }
       if (group_topk > 0 && docs.size() > group_topk) {
         docs.resize(group_topk);
+        if (!reverted_vectors.empty()) {
+          reverted_vectors.resize(group_topk);
+        }
+        if (!reverted_sparse_values.empty()) {
+          reverted_sparse_values.resize(group_topk);
+        }
       }
     }
+
+    std::vector<size_t> group_indices(merged_group_docs.size());
+    std::iota(group_indices.begin(), group_indices.end(), 0);
+    std::sort(group_indices.begin(), group_indices.end(),
+              [lower_is_better, &merged_group_docs](size_t lhs, size_t rhs) {
+                const auto &lhs_docs = merged_group_docs[lhs].docs();
+                const auto &rhs_docs = merged_group_docs[rhs].docs();
+                if (lhs_docs.empty() || rhs_docs.empty()) {
+                  return !lhs_docs.empty() && rhs_docs.empty();
+                }
+                if (lhs_docs[0].score() == rhs_docs[0].score()) {
+                  return merged_group_docs[lhs].group_id() <
+                         merged_group_docs[rhs].group_id();
+                }
+                return lower_is_better
+                           ? lhs_docs[0].score() < rhs_docs[0].score()
+                           : lhs_docs[0].score() > rhs_docs[0].score();
+              });
+    core::IndexGroupDocumentList sorted_group_docs(merged_group_docs.size());
+    std::vector<std::vector<std::string>> sorted_reverted_vector_list(
+        merged_reverted_vector_list.size());
+    std::vector<std::vector<std::string>> sorted_reverted_sparse_values_list(
+        merged_reverted_sparse_values_list.size());
+    for (size_t i = 0; i < group_indices.size(); ++i) {
+      sorted_group_docs[i] = std::move(merged_group_docs[group_indices[i]]);
+      sorted_reverted_vector_list[i] =
+          std::move(merged_reverted_vector_list[group_indices[i]]);
+      sorted_reverted_sparse_values_list[i] =
+          std::move(merged_reverted_sparse_values_list[group_indices[i]]);
+    }
+    merged_group_docs = std::move(sorted_group_docs);
+    merged_reverted_vector_list = std::move(sorted_reverted_vector_list);
+    merged_reverted_sparse_values_list =
+        std::move(sorted_reverted_sparse_values_list);
+
     // Truncate to group_count
     uint32_t group_count =
         query_params.group_by ? query_params.group_by->group_count : 0;
     if (group_count > 0 && merged_group_docs.size() > group_count) {
       merged_group_docs.resize(group_count);
+      merged_reverted_vector_list.resize(group_count);
+      merged_reverted_sparse_values_list.resize(group_count);
+    }
+    auto has_reverted_values =
+        [](const std::vector<std::vector<std::string>> &values) {
+          return std::any_of(values.begin(), values.end(),
+                             [](const auto &group_values) {
+                               return !group_values.empty();
+                             });
+        };
+    if (!has_reverted_values(merged_reverted_vector_list)) {
+      merged_reverted_vector_list.clear();
+    }
+    if (!has_reverted_values(merged_reverted_sparse_values_list)) {
+      merged_reverted_sparse_values_list.clear();
     }
     return std::make_unique<GroupVectorIndexResults>(
-        std::move(merged_group_docs));
+        std::move(merged_group_docs), std::move(merged_reverted_vector_list),
+        std::move(merged_reverted_sparse_values_list));
   }
 
   if (doc_list.empty()) {

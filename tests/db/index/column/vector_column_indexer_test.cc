@@ -13,6 +13,7 @@
 // limitations under the License.
 
 // #include "db/doc.h"
+#include "db/index/column/vector_column/combined_vector_column_indexer.h"
 #include "db/index/column/vector_column/vector_column_indexer.h"
 #include <cassert>
 #include <cstdint>
@@ -2705,10 +2706,19 @@ struct GroupByCase {
   bool fetch_vector = false;
 };
 
-std::unique_ptr<vector_column_params::GroupByParams> MakeGroupByParams() {
+std::unique_ptr<vector_column_params::GroupByParams> MakeGroupByParams(
+    uint32_t group_count = kGbNumGroups) {
   return std::make_unique<vector_column_params::GroupByParams>(
-      kGbGroupTopk, kGbNumGroups, [](uint64_t key) -> std::string {
+      kGbGroupTopk, group_count, [](uint64_t key) -> std::string {
         return std::to_string(key % kGbNumGroups);
+      });
+}
+
+std::unique_ptr<vector_column_params::GroupByParams> MakeSegmentGroupByParams(
+    uint32_t group_topk, uint32_t group_count) {
+  return std::make_unique<vector_column_params::GroupByParams>(
+      group_topk, group_count, [](uint64_t key) -> std::string {
+        return key < 2 ? "low" : "high";
       });
 }
 
@@ -2868,6 +2878,18 @@ class GroupByIndexerTest : public ::testing::Test {
     auto iter = group_results->create_iterator();
     size_t total = 0;
     while (iter->valid()) {
+      if (tc.fetch_vector && !tc.is_sparse) {
+        const auto vector_data = iter->vector();
+        const auto &dense_vector =
+            std::get<vector_column_params::DenseVector>(vector_data.vector);
+        const float *vector =
+            reinterpret_cast<const float *>(dense_vector.data);
+        const float expected = static_cast<float>(iter->doc_id());
+        for (uint32_t i = 0; i < tc.dimension; ++i) {
+          ASSERT_FLOAT_EQ(expected, vector[i])
+              << tc.name << " doc " << iter->doc_id() << " i " << i;
+        }
+      }
       total++;
       iter->next();
     }
@@ -2900,11 +2922,80 @@ TEST_F(GroupByIndexerTest, Dense) {
        std::make_shared<HnswQueryParams>(300),
        /*is_sparse=*/false, /*dimension=*/kGbDimension,
        /*optional=*/false, /*with_bf_pks=*/false, /*fetch_vector=*/true},
+      {"dense_hnsw_fp16_fetch_vector",
+       std::make_shared<HnswIndexParams>(MetricType::IP, 10, 100,
+                                         QuantizeType::FP16),
+       std::make_shared<HnswQueryParams>(300),
+       /*is_sparse=*/false, /*dimension=*/kGbDimension,
+       /*optional=*/false, /*with_bf_pks=*/false, /*fetch_vector=*/true},
   };
 
   for (const auto &tc : cases) {
     RunOk(tc);
   }
+}
+
+TEST_F(GroupByIndexerTest, CombinedSortsGroupsBeforeTruncating) {
+  const std::string block0_path = "test_groupby_combined_block0.index";
+  const std::string block1_path = "test_groupby_combined_block1.index";
+  zvec::test_util::RemoveTestFiles(block0_path);
+  zvec::test_util::RemoveTestFiles(block1_path);
+
+  auto index_params = std::make_shared<FlatIndexParams>(MetricType::IP);
+  FieldSchema schema("test", DataType::VECTOR_FP32, kGbDimension, false,
+                     index_params);
+
+  auto block0 = std::make_shared<VectorColumnIndexer>(block0_path, schema);
+  auto block1 = std::make_shared<VectorColumnIndexer>(block1_path, schema);
+  ASSERT_TRUE(block0->Open(vector_column_params::ReadOptions{true, true}).ok());
+  ASSERT_TRUE(block1->Open(vector_column_params::ReadOptions{true, true}).ok());
+
+  auto insert_dense = [](const VectorColumnIndexer::Ptr &indexer,
+                         uint32_t doc_id, float value) {
+    std::vector<float> vec(kGbDimension, value);
+    vector_column_params::DenseVector dense{vec.data()};
+    ASSERT_TRUE(indexer->Insert(vector_column_params::VectorData{dense},
+                                doc_id)
+                    .ok());
+  };
+  insert_dense(block0, 0, 0.0f);
+  insert_dense(block0, 1, 1.0f);
+  insert_dense(block1, 0, 10.0f);
+  insert_dense(block1, 1, 11.0f);
+
+  std::vector<BlockMeta> blocks{
+      BlockMeta(0, BlockType::VECTOR_INDEX, 0, 1, 2, {"test"}),
+      BlockMeta(1, BlockType::VECTOR_INDEX, 2, 3, 2, {"test"}),
+  };
+  SegmentMeta segment_meta;
+  CombinedVectorColumnIndexer combined({block0, block1}, {}, schema,
+                                       segment_meta, blocks, MetricType::IP);
+
+  std::vector<float> query(kGbDimension, 1.0f);
+  vector_column_params::DenseVector dense_query{query.data()};
+  vector_column_params::QueryParams query_params;
+  query_params.topk = kGbSearchTopk;
+  query_params.query_params = std::make_shared<QueryParams>(IndexType::FLAT);
+  query_params.group_by = MakeSegmentGroupByParams(/*group_topk=*/1,
+                                                   /*group_count=*/1);
+
+  auto results =
+      combined.Search(vector_column_params::VectorData{dense_query},
+                      query_params);
+  ASSERT_TRUE(results.has_value());
+  auto *group_results =
+      dynamic_cast<GroupVectorIndexResults *>(results.value().get());
+  ASSERT_TRUE(group_results);
+  ASSERT_EQ(1u, group_results->groups().size());
+  ASSERT_EQ("high", group_results->groups()[0].group_id());
+  ASSERT_EQ(1u, group_results->groups()[0].docs().size());
+  ASSERT_EQ(3u, group_results->groups()[0].docs()[0].key());
+  ASSERT_FLOAT_EQ(44.0f, group_results->groups()[0].docs()[0].score());
+
+  ASSERT_TRUE(block0->Close().ok());
+  ASSERT_TRUE(block1->Close().ok());
+  zvec::test_util::RemoveTestFiles(block0_path);
+  zvec::test_util::RemoveTestFiles(block1_path);
 }
 
 TEST_F(GroupByIndexerTest, Sparse) {
