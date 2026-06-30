@@ -43,6 +43,7 @@ struct GroupByCase {
   BaseIndexQueryParam::Pointer query_param;
   bool is_sparse = false;
   uint32_t dimension = kDimension;
+  bool with_refiner = false;
 };
 
 std::shared_ptr<std::vector<uint64_t>> AllPks() {
@@ -253,6 +254,11 @@ class GroupByInterfaceTest : public ::testing::Test {
 
     auto query_param = test_case.query_param->Clone();
     AttachGroupBy(query_param);
+    if (test_case.with_refiner) {
+      query_param->refiner_param = std::make_shared<RefinerParam>();
+      query_param->refiner_param->scale_factor_ = 1.0f;
+      query_param->refiner_param->reference_index = source;
+    }
     auto query = MakeQuery(test_case);
 
     SearchResult result;
@@ -502,6 +508,12 @@ TEST_F(GroupByInterfaceTest, UnsupportedIndexTypes) {
            .WithNList(4)
            .Build(),
        IVFQueryParamBuilder().with_topk(kSearchTopk).build()},
+      {"unsupported_refiner",
+       DenseHnswParam(),
+       HnswQuery(),
+       /*is_sparse=*/false,
+       /*dimension=*/kDimension,
+       /*with_refiner=*/true},
 #if DISKANN_SUPPORTED
       {"unsupported_diskann_graph", DenseDiskAnnParam(), DiskAnnQuery()},
       {"unsupported_diskann_linear", DenseDiskAnnParam(),
