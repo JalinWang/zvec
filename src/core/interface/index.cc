@@ -732,8 +732,12 @@ int Index::_dense_search(const VectorData &vector_data,
   bool has_group_by =
       (search_param->group_by_param && search_param->group_by_param->group_by);
   if (has_group_by) {
-    result->group_doc_list_ = std::move(
-        const_cast<core::IndexGroupDocumentList &>(context->group_result()));
+    auto *group_result = context->mutable_group_result();
+    if (group_result == nullptr) {
+      LOG_ERROR("Failed to retrieve group_by result");
+      return core::IndexError_Runtime;
+    }
+    result->group_doc_list_ = std::move(*group_result);
   } else {
     result->doc_list_ = std::move(context->result());
   }
@@ -834,8 +838,12 @@ int Index::_sparse_search(const VectorData &vector_data,
   bool has_group_by =
       (search_param->group_by_param && search_param->group_by_param->group_by);
   if (has_group_by) {
-    result->group_doc_list_ = std::move(
-        const_cast<core::IndexGroupDocumentList &>(context->group_result()));
+    auto *group_result = context->mutable_group_result();
+    if (group_result == nullptr) {
+      LOG_ERROR("Failed to retrieve group_by result");
+      return core::IndexError_Runtime;
+    }
+    result->group_doc_list_ = std::move(*group_result);
   } else {
     result->doc_list_ = std::move(context->result());
   }
