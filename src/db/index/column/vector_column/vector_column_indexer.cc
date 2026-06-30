@@ -228,9 +228,9 @@ Result<IndexResults::Ptr> VectorColumnIndexer::Search(
 
   // Return grouped results when group_by is active
   if (!search_result.group_doc_list_.empty()) {
-    auto grouped_reverted_vector_list = GroupRevertedValues(
-        search_result.group_doc_list_,
-        std::move(search_result.reverted_vector_list_));
+    auto grouped_reverted_vector_list =
+        GroupRevertedValues(search_result.group_doc_list_,
+                            std::move(search_result.reverted_vector_list_));
     auto grouped_reverted_sparse_values_list = GroupRevertedValues(
         search_result.group_doc_list_,
         std::move(search_result.reverted_sparse_values_list_));

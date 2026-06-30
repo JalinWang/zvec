@@ -483,8 +483,8 @@ int Index::Search(const VectorData &vector_data,
     return core::IndexError_Runtime;
   }
 
-  if (search_param->refiner_param != nullptr &&
-      search_param->group_by_param && search_param->group_by_param->group_by) {
+  if (search_param->refiner_param != nullptr && search_param->group_by_param &&
+      search_param->group_by_param->group_by) {
     LOG_ERROR("group_by search is not supported with refiner");
     return core::IndexError_Unsupported;
   }

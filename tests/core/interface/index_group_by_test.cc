@@ -508,9 +508,7 @@ TEST_F(GroupByInterfaceTest, UnsupportedIndexTypes) {
            .WithNList(4)
            .Build(),
        IVFQueryParamBuilder().with_topk(kSearchTopk).build()},
-      {"unsupported_refiner",
-       DenseHnswParam(),
-       HnswQuery(),
+      {"unsupported_refiner", DenseHnswParam(), HnswQuery(),
        /*is_sparse=*/false,
        /*dimension=*/kDimension,
        /*with_refiner=*/true},

@@ -266,8 +266,9 @@ Result<IndexResults::Ptr> CombinedVectorColumnIndexer::Search(
       std::iota(indices.begin(), indices.end(), 0);
       std::sort(indices.begin(), indices.end(),
                 [lower_is_better, &docs](size_t lhs, size_t rhs) {
-                  return lower_is_better ? docs[lhs].score() < docs[rhs].score()
-                                         : docs[lhs].score() > docs[rhs].score();
+                  return lower_is_better
+                             ? docs[lhs].score() < docs[rhs].score()
+                             : docs[lhs].score() > docs[rhs].score();
                 });
 
       core::IndexDocumentList sorted_docs(docs.size());
@@ -282,8 +283,7 @@ Result<IndexResults::Ptr> CombinedVectorColumnIndexer::Search(
       for (size_t i = 0; i < indices.size(); ++i) {
         sorted_docs[i] = std::move(docs[indices[i]]);
         if (!reverted_vectors.empty()) {
-          sorted_reverted_vectors[i] =
-              std::move(reverted_vectors[indices[i]]);
+          sorted_reverted_vectors[i] = std::move(reverted_vectors[indices[i]]);
         }
         if (!reverted_sparse_values.empty()) {
           sorted_reverted_sparse_values[i] =
@@ -352,10 +352,9 @@ Result<IndexResults::Ptr> CombinedVectorColumnIndexer::Search(
     }
     auto has_reverted_values =
         [](const std::vector<std::vector<std::string>> &values) {
-          return std::any_of(values.begin(), values.end(),
-                             [](const auto &group_values) {
-                               return !group_values.empty();
-                             });
+          return std::any_of(
+              values.begin(), values.end(),
+              [](const auto &group_values) { return !group_values.empty(); });
         };
     if (!has_reverted_values(merged_reverted_vector_list)) {
       merged_reverted_vector_list.clear();
