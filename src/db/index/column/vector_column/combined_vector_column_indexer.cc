@@ -46,12 +46,16 @@ bool HasRevertedValues(
 
 struct ResultDoc {
   core::IndexDocument doc;
+  // Keep fetched/reverted payloads attached to the doc while sorting and
+  // truncating, so parallel result vectors cannot drift out of sync.
   std::string reverted_vector;
   std::string reverted_sparse_values;
 };
 
 class VectorResultAccumulator {
  public:
+  // Collect plain topk results from each block after translating block-local
+  // doc IDs back to segment-level IDs.
   void AddBlock(uint32_t block_offset, VectorIndexResults *results) {
     auto &docs = results->docs();
     auto &reverted_vectors = results->reverted_vector_list();
@@ -76,6 +80,10 @@ class VectorResultAccumulator {
 
   IndexResults::Ptr Finish(bool is_sparse, MetricType metric_type,
                            uint32_t topk) {
+    // Finish turns accumulated block docs into the public result format:
+    // rank all docs globally, keep topk, then split ResultDoc back into the
+    // doc list and optional reverted payload lists expected by
+    // VectorIndexResults.
     std::sort(docs_.begin(), docs_.end(),
               [metric_type](const ResultDoc &lhs, const ResultDoc &rhs) {
                 return IsBetterScore(metric_type, lhs.doc.score(),
@@ -122,6 +130,8 @@ class GroupResultAccumulator {
   };
 
  public:
+  // Merge same-named groups across blocks. The per-doc payload stays inside
+  // ResultDoc until the final GroupVectorIndexResults is materialized.
   void AddBlock(uint32_t block_offset, GroupVectorIndexResults *results) {
     auto &groups = results->groups();
     auto &reverted_vectors = results->reverted_vector_list();
@@ -164,6 +174,9 @@ class GroupResultAccumulator {
 
   IndexResults::Ptr Finish(MetricType metric_type, uint32_t group_topk,
                            uint32_t group_count) {
+    // Finish first ranks docs inside each merged group and trims group_topk.
+    // It then ranks groups by their best remaining doc, trims group_count, and
+    // finally expands ResultDoc back into GroupVectorIndexResults payloads.
     std::vector<GroupResult> groups;
     groups.reserve(group_order_.size());
 
@@ -286,6 +299,10 @@ CombinedVectorColumnIndexer::CombinedVectorColumnIndexer(
 Result<IndexResults::Ptr> CombinedVectorColumnIndexer::Search(
     const vector_column_params::VectorData &vector_data,
     const vector_column_params::QueryParams &query_params) {
+  // Search runs each block with block-local query params, then folds those
+  // partial results into one segment-level result. The accumulators keep doc
+  // IDs and fetched/reverted payloads aligned while final sorting and
+  // truncation are deferred until every block has been searched.
   VectorResultAccumulator vector_results;
   GroupResultAccumulator group_results;
 
@@ -336,6 +353,9 @@ Result<IndexResults::Ptr> CombinedVectorColumnIndexer::Search(
       need_refine = true;
     }
 
+    // Rewrite segment-level query state to the current block: filters and
+    // group_by callbacks see segment IDs, while the underlying block indexer
+    // searches with block-local doc IDs.
     const IndexFilter *filter{nullptr};
     auto per_block_filter =
         BlockOffsetFilter{query_params.filter, block_offsets_[i]};
