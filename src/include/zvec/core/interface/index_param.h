@@ -231,10 +231,10 @@ struct IVFQueryParam : public BaseIndexQueryParam {
   using Pointer = std::shared_ptr<IVFQueryParam>;
 
   BaseIndexQueryParam::Pointer Clone() const override {
-    auto cloned = std::make_shared<IVFQueryParam>(*this);
-    cloned->l1QueryParam = l1QueryParam ? l1QueryParam->Clone() : nullptr;
-    cloned->l2QueryParam = l2QueryParam ? l2QueryParam->Clone() : nullptr;
-    return cloned;
+    auto cloned_this = std::make_shared<IVFQueryParam>(*this);
+    cloned_this->l1QueryParam = l1QueryParam ? l1QueryParam->Clone() : nullptr;
+    cloned_this->l2QueryParam = l2QueryParam ? l2QueryParam->Clone() : nullptr;
+    return cloned_this;
   }
 };
 
