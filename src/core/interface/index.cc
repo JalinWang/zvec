@@ -38,6 +38,15 @@ void for_each_doc(SearchResult *result, bool has_group_by, Fn &&fn) {
   }
 }
 
+bool has_group_by_search(const BaseIndexQueryParam::Pointer &search_param) {
+  return search_param->group_by_param && search_param->group_by_param->group_by;
+}
+
+bool is_group_by_unsupported_index(IndexType index_type) {
+  return index_type == IndexType::kIVF || index_type == IndexType::kDiskAnn ||
+         index_type == IndexType::kVamana;
+}
+
 }  // namespace
 
 // eliminate the pre-alloc of the context pool
@@ -515,15 +524,20 @@ int Index::Search(const VectorData &vector_data,
     return core::IndexError_Runtime;
   }
 
+  const bool has_group_by = has_group_by_search(search_param);
+  if (has_group_by && is_group_by_unsupported_index(param_.index_type)) {
+    LOG_ERROR("group_by search is not supported for this index type");
+    return core::IndexError_Unsupported;
+  }
+
+  if (search_param->refiner_param != nullptr && has_group_by) {
+    LOG_ERROR("group_by search is not supported with refiner");
+    return core::IndexError_Unsupported;
+  }
+
   if (!is_trained_ && this->Train() != 0) {
     LOG_ERROR("Failed to train index");
     return core::IndexError_Runtime;
-  }
-
-  if (search_param->refiner_param != nullptr && search_param->group_by_param &&
-      search_param->group_by_param->group_by) {
-    LOG_ERROR("group_by search is not supported with refiner");
-    return core::IndexError_Unsupported;
   }
 
   auto &context = acquire_context();
