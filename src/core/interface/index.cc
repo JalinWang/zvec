@@ -27,11 +27,6 @@ bool has_group_by_search(const BaseIndexQueryParam::Pointer &search_param) {
   return search_param->group_by_param && search_param->group_by_param->group_by;
 }
 
-bool is_group_by_unsupported_index(IndexType index_type) {
-  return index_type == IndexType::kIVF || index_type == IndexType::kDiskAnn ||
-         index_type == IndexType::kVamana;
-}
-
 }  // namespace
 
 // eliminate the pre-alloc of the context pool
