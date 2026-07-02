@@ -37,8 +37,7 @@ bool HasRevertedValues(const std::vector<std::string> &values) {
                      [](const auto &value) { return !value.empty(); });
 }
 
-bool HasRevertedValues(
-    const std::vector<std::vector<std::string>> &values) {
+bool HasRevertedValues(const std::vector<std::vector<std::string>> &values) {
   return std::any_of(values.begin(), values.end(), [](const auto &group) {
     return HasRevertedValues(group);
   });
@@ -140,12 +139,9 @@ class GroupResultAccumulator {
     for (size_t group_idx = 0; group_idx < groups.size(); ++group_idx) {
       auto &group = groups[group_idx];
       auto &docs = group.docs();
-      auto [it, inserted] =
-          docs_by_group_.try_emplace(group.group_id(), std::vector<ResultDoc>{});
+      auto [it, _] = docs_by_group_.try_emplace(group.group_id(),
+                                                std::vector<ResultDoc>{});
       auto &merged_docs = it->second;
-      if (inserted) {
-        group_order_.emplace_back(group.group_id());
-      }
       merged_docs.reserve(merged_docs.size() + docs.size());
 
       for (size_t doc_idx = 0; doc_idx < docs.size(); ++doc_idx) {
@@ -178,15 +174,12 @@ class GroupResultAccumulator {
     // It then ranks groups by their best remaining doc, trims group_count, and
     // finally expands ResultDoc back into GroupVectorIndexResults payloads.
     std::vector<GroupResult> groups;
-    groups.reserve(group_order_.size());
+    groups.reserve(docs_by_group_.size());
 
-    for (const auto &group_id : group_order_) {
-      auto it = docs_by_group_.find(group_id);
-      if (it == docs_by_group_.end() || it->second.empty()) {
+    for (auto &[group_id, docs] : docs_by_group_) {
+      if (docs.empty()) {
         continue;
       }
-
-      auto &docs = it->second;
       std::sort(docs.begin(), docs.end(),
                 [metric_type](const ResultDoc &lhs, const ResultDoc &rhs) {
                   return IsBetterScore(metric_type, lhs.doc.score(),
@@ -258,7 +251,6 @@ class GroupResultAccumulator {
 
  private:
   std::unordered_map<std::string, std::vector<ResultDoc>> docs_by_group_;
-  std::vector<std::string> group_order_;
 };
 
 }  // namespace
