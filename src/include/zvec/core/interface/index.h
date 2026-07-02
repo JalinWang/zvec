@@ -99,6 +99,9 @@ struct SearchResult {
   // use string to manage memory
   std::vector<std::string> reverted_vector_list_{};
   std::vector<std::string> reverted_sparse_values_list_{};
+  // Grouped reverted values, aligned with group_doc_list_.
+  std::vector<std::vector<std::string>> group_reverted_vector_list_{};
+  std::vector<std::vector<std::string>> group_reverted_sparse_values_list_{};
 };
 
 class Index {

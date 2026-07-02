@@ -20,34 +20,6 @@
 
 namespace zvec {
 
-namespace {
-
-std::vector<std::vector<std::string>> GroupRevertedValues(
-    const core::IndexGroupDocumentList &groups,
-    std::vector<std::string> &&reverted_values) {
-  std::vector<std::vector<std::string>> grouped_values;
-  if (reverted_values.empty()) {
-    return grouped_values;
-  }
-
-  grouped_values.reserve(groups.size());
-  size_t offset = 0;
-  for (const auto &group : groups) {
-    const size_t doc_count = group.docs().size();
-    std::vector<std::string> group_values;
-    group_values.reserve(doc_count);
-    for (size_t i = 0; i < doc_count && offset + i < reverted_values.size();
-         ++i) {
-      group_values.emplace_back(std::move(reverted_values[offset + i]));
-    }
-    offset += doc_count;
-    grouped_values.emplace_back(std::move(group_values));
-  }
-  return grouped_values;
-}
-
-}  // namespace
-
 Status VectorColumnIndexer::Open(
     const vector_column_params::ReadOptions &read_options) {
   if (index != nullptr) {
@@ -228,16 +200,10 @@ Result<IndexResults::Ptr> VectorColumnIndexer::Search(
 
   // Return grouped results when group_by is active
   if (!search_result.group_doc_list_.empty()) {
-    auto grouped_reverted_vector_list =
-        GroupRevertedValues(search_result.group_doc_list_,
-                            std::move(search_result.reverted_vector_list_));
-    auto grouped_reverted_sparse_values_list = GroupRevertedValues(
-        search_result.group_doc_list_,
-        std::move(search_result.reverted_sparse_values_list_));
     auto result = std::make_shared<GroupVectorIndexResults>(
         std::move(search_result.group_doc_list_),
-        std::move(grouped_reverted_vector_list),
-        std::move(grouped_reverted_sparse_values_list));
+        std::move(search_result.group_reverted_vector_list_),
+        std::move(search_result.group_reverted_sparse_values_list_));
     return result;
   }
 

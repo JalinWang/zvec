@@ -348,15 +348,26 @@ class GroupByInterfaceTest : public ::testing::Test {
 
   void AssertDenseVectorsFetched(const SearchResult &result, uint32_t dimension,
                                  const std::string &case_name = "") {
-    size_t reverted_idx = 0;
-    for (const auto &group : result.group_doc_list_) {
-      for (const auto &doc : group.docs()) {
+    const bool has_reverted = !result.group_reverted_vector_list_.empty();
+    if (has_reverted) {
+      ASSERT_EQ(result.group_doc_list_.size(),
+                result.group_reverted_vector_list_.size());
+    }
+    for (size_t group_idx = 0; group_idx < result.group_doc_list_.size();
+         ++group_idx) {
+      const auto &group = result.group_doc_list_[group_idx];
+      const std::vector<std::string> *group_vectors = nullptr;
+      if (has_reverted) {
+        group_vectors = &result.group_reverted_vector_list_[group_idx];
+        ASSERT_EQ(group.docs().size(), group_vectors->size());
+      }
+      for (size_t doc_idx = 0; doc_idx < group.docs().size(); ++doc_idx) {
+        const auto &doc = group.docs()[doc_idx];
         const float expected = static_cast<float>(doc.key());
         const float *vector = nullptr;
-        if (!result.reverted_vector_list_.empty()) {
-          ASSERT_LT(reverted_idx, result.reverted_vector_list_.size());
-          vector = reinterpret_cast<const float *>(
-              result.reverted_vector_list_[reverted_idx++].data());
+        if (has_reverted) {
+          vector =
+              reinterpret_cast<const float *>((*group_vectors)[doc_idx].data());
         } else if (doc.vector() != nullptr) {
           vector = reinterpret_cast<const float *>(doc.vector());
         } else {
@@ -372,25 +383,35 @@ class GroupByInterfaceTest : public ::testing::Test {
         }
       }
     }
-    if (!result.reverted_vector_list_.empty()) {
-      ASSERT_EQ(CountGroupedDocs(result), result.reverted_vector_list_.size());
-    }
   }
 
   void AssertSparseVectorsFetched(const SearchResult &result,
                                   uint32_t dimension) {
-    size_t reverted_idx = 0;
-    for (const auto &group : result.group_doc_list_) {
-      for (const auto &doc : group.docs()) {
+    const bool has_reverted =
+        !result.group_reverted_sparse_values_list_.empty();
+    if (has_reverted) {
+      ASSERT_EQ(result.group_doc_list_.size(),
+                result.group_reverted_sparse_values_list_.size());
+    }
+    for (size_t group_idx = 0; group_idx < result.group_doc_list_.size();
+         ++group_idx) {
+      const auto &group = result.group_doc_list_[group_idx];
+      const std::vector<std::string> *group_sparse_values = nullptr;
+      if (has_reverted) {
+        group_sparse_values =
+            &result.group_reverted_sparse_values_list_[group_idx];
+        ASSERT_EQ(group.docs().size(), group_sparse_values->size());
+      }
+      for (size_t doc_idx = 0; doc_idx < group.docs().size(); ++doc_idx) {
+        const auto &doc = group.docs()[doc_idx];
         const auto &sparse = doc.sparse_doc();
         ASSERT_EQ(dimension, sparse.sparse_count());
         const auto *indices =
             reinterpret_cast<const uint32_t *>(sparse.sparse_indices().data());
         const float *values = nullptr;
-        if (!result.reverted_sparse_values_list_.empty()) {
-          ASSERT_LT(reverted_idx, result.reverted_sparse_values_list_.size());
+        if (has_reverted) {
           values = reinterpret_cast<const float *>(
-              result.reverted_sparse_values_list_[reverted_idx++].data());
+              (*group_sparse_values)[doc_idx].data());
         } else {
           values =
               reinterpret_cast<const float *>(sparse.sparse_values().data());
@@ -402,18 +423,6 @@ class GroupByInterfaceTest : public ::testing::Test {
         }
       }
     }
-    if (!result.reverted_sparse_values_list_.empty()) {
-      ASSERT_EQ(CountGroupedDocs(result),
-                result.reverted_sparse_values_list_.size());
-    }
-  }
-
-  size_t CountGroupedDocs(const SearchResult &result) {
-    size_t total = 0;
-    for (const auto &group : result.group_doc_list_) {
-      total += group.docs().size();
-    }
-    return total;
   }
 };
 

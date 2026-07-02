@@ -23,22 +23,6 @@ namespace zvec::core_interface {
 
 namespace {
 
-template <typename Fn>
-void for_each_result_doc(SearchResult *result, Fn &&fn) {
-  for (auto &doc : result->doc_list_) {
-    fn(doc);
-  }
-}
-
-template <typename Fn>
-void for_each_group_result_doc(SearchResult *result, Fn &&fn) {
-  for (auto &group : result->group_doc_list_) {
-    for (auto &doc : *group.mutable_docs()) {
-      fn(doc);
-    }
-  }
-}
-
 bool has_group_by_search(const BaseIndexQueryParam::Pointer &search_param) {
   return search_param->group_by_param && search_param->group_by_param->group_by;
 }
@@ -795,13 +779,16 @@ int Index::_dense_search(const VectorData &vector_data,
   }
 
   if (metric_->support_normalize()) {
-    auto normalize_fn = [this](auto &doc) {
-      metric_->normalize(doc.mutable_score());
-    };
     if (has_group_by) {
-      for_each_group_result_doc(result, normalize_fn);
+      for (auto &group : result->group_doc_list_) {
+        for (auto &doc : *group.mutable_docs()) {
+          metric_->normalize(doc.mutable_score());
+        }
+      }
     } else {
-      for_each_result_doc(result, normalize_fn);
+      for (auto &doc : result->doc_list_) {
+        metric_->normalize(doc.mutable_score());
+      }
     }
   }
   if (reformer_) {
@@ -825,22 +812,35 @@ int Index::_dense_search(const VectorData &vector_data,
     }
     if (context->fetch_vector() && reformer_->need_revert()) {
       int revert_err = 0;
-      auto revert_fn = [&](auto &doc) {
+      auto revert_one = [&](const void *vec, std::vector<std::string> *out) {
         if (revert_err) return;
         std::string reverted_vector;
         reverted_vector.resize(input_vector_meta_.dimension() *
                                input_vector_meta_.unit_size());
-        if (reformer_->revert(doc.vector(), new_meta, &reverted_vector) != 0) {
+        if (reformer_->revert(vec, new_meta, &reverted_vector) != 0) {
           LOG_ERROR("Failed to revert vector");
           revert_err = core::IndexError_Runtime;
           return;
         }
-        result->reverted_vector_list_.push_back(std::move(reverted_vector));
+        out->push_back(std::move(reverted_vector));
+      };
+      auto revert_docs = [&](auto &docs, std::vector<std::string> &out) {
+        out.reserve(docs.size());
+        for (auto &doc : docs) {
+          revert_one(doc.vector(), &out);
+        }
       };
       if (has_group_by) {
-        for_each_group_result_doc(result, revert_fn);
+        result->group_reverted_vector_list_.reserve(
+            result->group_doc_list_.size());
+        for (auto &group : result->group_doc_list_) {
+          std::vector<std::string> group_vectors;
+          revert_docs(*group.mutable_docs(), group_vectors);
+          result->group_reverted_vector_list_.push_back(
+              std::move(group_vectors));
+        }
       } else {
-        for_each_result_doc(result, revert_fn);
+        revert_docs(result->doc_list_, result->reverted_vector_list_);
       }
       if (revert_err) return revert_err;
     }
@@ -897,8 +897,7 @@ int Index::_sparse_search(const VectorData &vector_data,
     }
   }
   // Retrieve group_by results if applicable
-  bool has_group_by =
-      (search_param->group_by_param && search_param->group_by_param->group_by);
+  const bool has_group_by = has_group_by_search(search_param);
   if (has_group_by) {
     auto *group_result = context->mutable_group_result();
     if (group_result == nullptr) {
@@ -911,20 +910,24 @@ int Index::_sparse_search(const VectorData &vector_data,
   }
 
   if (metric_->support_normalize()) {
-    auto normalize_fn = [this](auto &doc) {
-      metric_->normalize(doc.mutable_score());
-    };
     if (has_group_by) {
-      for_each_group_result_doc(result, normalize_fn);
+      for (auto &group : result->group_doc_list_) {
+        for (auto &doc : *group.mutable_docs()) {
+          metric_->normalize(doc.mutable_score());
+        }
+      }
     } else {
-      for_each_result_doc(result, normalize_fn);
+      for (auto &doc : result->doc_list_) {
+        metric_->normalize(doc.mutable_score());
+      }
     }
   }
   if (reformer_) {
     // TODO: no need to call reformer_->normalize() when sparse?
     if (context->fetch_vector() && reformer_->need_revert()) {
       int revert_err = 0;
-      auto revert_fn = [&](auto &doc) {
+      auto revert_one = [&](const core::IndexDocument &doc,
+                            std::vector<std::string> *out) {
         if (revert_err) return;
         auto &result_doc = doc.sparse_doc();
         std::string reverted_sparse_values;
@@ -940,13 +943,25 @@ int Index::_sparse_search(const VectorData &vector_data,
           revert_err = core::IndexError_Runtime;
           return;
         }
-        result->reverted_sparse_values_list_.push_back(
-            std::move(reverted_sparse_values));
+        out->push_back(std::move(reverted_sparse_values));
+      };
+      auto revert_docs = [&](auto &docs, std::vector<std::string> &out) {
+        out.reserve(docs.size());
+        for (auto &doc : docs) {
+          revert_one(doc, &out);
+        }
       };
       if (has_group_by) {
-        for_each_group_result_doc(result, revert_fn);
+        result->group_reverted_sparse_values_list_.reserve(
+            result->group_doc_list_.size());
+        for (auto &group : result->group_doc_list_) {
+          std::vector<std::string> group_sparse_values;
+          revert_docs(*group.mutable_docs(), group_sparse_values);
+          result->group_reverted_sparse_values_list_.push_back(
+              std::move(group_sparse_values));
+        }
       } else {
-        for_each_result_doc(result, revert_fn);
+        revert_docs(result->doc_list_, result->reverted_sparse_values_list_);
       }
       if (revert_err) return revert_err;
     }
