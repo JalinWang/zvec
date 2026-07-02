@@ -139,9 +139,7 @@ class GroupResultAccumulator {
     for (size_t group_idx = 0; group_idx < groups.size(); ++group_idx) {
       auto &group = groups[group_idx];
       auto &docs = group.docs();
-      auto [it, _] = docs_by_group_.try_emplace(group.group_id(),
-                                                std::vector<ResultDoc>{});
-      auto &merged_docs = it->second;
+      auto &merged_docs = docs_by_group_[group.group_id()];
       merged_docs.reserve(merged_docs.size() + docs.size());
 
       for (size_t doc_idx = 0; doc_idx < docs.size(); ++doc_idx) {
