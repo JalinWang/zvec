@@ -138,12 +138,12 @@ class GroupResultAccumulator {
 
     for (size_t group_idx = 0; group_idx < groups.size(); ++group_idx) {
       auto &group = groups[group_idx];
-      auto &docs = group.docs();
+      auto *docs = group.mutable_docs();
       auto &merged_docs = docs_by_group_[group.group_id()];
-      merged_docs.reserve(merged_docs.size() + docs.size());
+      merged_docs.reserve(merged_docs.size() + docs->size());
 
-      for (size_t doc_idx = 0; doc_idx < docs.size(); ++doc_idx) {
-        auto doc = docs[doc_idx];
+      for (size_t doc_idx = 0; doc_idx < docs->size(); ++doc_idx) {
+        auto doc = std::move((*docs)[doc_idx]);
         doc.set_key(block_offset + doc.key());
 
         ResultDoc result_doc{std::move(doc), {}, {}};

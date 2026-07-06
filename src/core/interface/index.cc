@@ -790,13 +790,11 @@ int Index::_dense_search(const VectorData &vector_data,
     if (has_group_by) {
       for (auto &group : result->group_doc_list_) {
         auto *docs = group.mutable_docs();
-        core::IndexDocumentList doc_list(docs->begin(), docs->end());
         if (reformer_->normalize(dense_vector.data, input_vector_meta_,
-                                 doc_list) != 0) {
+                                 *docs) != 0) {
           LOG_ERROR("Failed to normalize vector");
           return core::IndexError_Runtime;
         }
-        std::copy(doc_list.begin(), doc_list.end(), docs->begin());
       }
     } else {
       if (reformer_->normalize(dense_vector.data, input_vector_meta_,
