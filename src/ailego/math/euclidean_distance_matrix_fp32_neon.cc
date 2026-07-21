@@ -19,7 +19,7 @@
 namespace zvec {
 namespace ailego {
 
-#if (defined(__ARM_NEON) || defined(_M_ARM64))
+#if defined(AILEGO_HAVE_NEON)
 //! Squared Euclidean Distance
 void SquaredEuclideanDistanceFp32NEON(const float *lhs, const float *rhs,
                                       size_t size, float *out) {

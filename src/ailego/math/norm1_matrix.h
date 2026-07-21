@@ -116,8 +116,7 @@ struct Norm1Matrix<
   }
 };
 
-#if defined(__SSE__) || ((defined(__ARM_NEON) || defined(_M_ARM64)) && \
-                         (defined(__aarch64__) || defined(_M_ARM64)))
+#if defined(__SSE__) || (defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64))
 /*! L1-Norm Matrix (FP32, M=1)
  */
 template <>

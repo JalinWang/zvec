@@ -22,7 +22,7 @@ namespace ailego {
 //--------------------------------------------------
 // Dense
 //--------------------------------------------------
-#if (defined(__ARM_NEON) || defined(_M_ARM64))
+#if defined(AILEGO_HAVE_NEON)
 float InnerProductFp32NEON(const float *lhs, const float *rhs, size_t size) {
   const float *last = lhs + size;
   const float *last_aligned = lhs + ((size >> 3) << 3);

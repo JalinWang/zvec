@@ -116,9 +116,9 @@ if(NOT ANDROID AND AUTO_DETECT_ARCH)
             # MSVC on ARM64: NEON is the ARMv8 baseline and is always enabled,
             # so no `-march` flag is required (MSVC does not accept GCC-style
             # `-march=` anyway). The NEON math kernels still get compiled via
-            # the ALL_SRCS glob above; their `#if defined(__ARM_NEON)` guards
-            # were extended in this PR to also accept `_M_ARM64` so the bodies
-            # actually emit code under MSVC.
+            # the ALL_SRCS glob above; their guards use the AILEGO_HAVE_NEON /
+            # AILEGO_ARM64 feature macros (defined in platform.h), which resolve
+            # to true on MSVC ARM64 so the bodies actually emit code.
         endif()
     endif()
 endif()

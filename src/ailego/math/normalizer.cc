@@ -17,8 +17,7 @@
 namespace zvec {
 namespace ailego {
 
-#if ((defined(__ARM_NEON) || defined(_M_ARM64)) && \
-     (defined(__aarch64__) || defined(_M_ARM64)))
+#if (defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64))
 static inline void NormalizeNEON(float *arr, size_t dim, float norm) {
   float *last = arr + dim;
   float *last_aligned = arr + ((dim >> 3) << 3);
@@ -399,11 +398,10 @@ static inline void NormalizeSSE(float *arr, size_t dim, float norm) {
 }
 #endif  // __SSE__
 
-#if defined(__SSE__) || ((defined(__ARM_NEON) || defined(_M_ARM64)) && \
-                         (defined(__aarch64__) || defined(_M_ARM64)))
+#if defined(__SSE__) || (defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64))
 //! Compute the norm of vector
 void Normalizer<float>::Compute(ValueType *arr, size_t dim, float norm) {
-#if (defined(__ARM_NEON) || defined(_M_ARM64))
+#if defined(AILEGO_HAVE_NEON)
   NormalizeNEON(arr, dim, norm);
 #else
 #if defined(__AVX512F__)

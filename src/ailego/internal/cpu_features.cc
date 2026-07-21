@@ -14,11 +14,11 @@
 
 #include "cpu_features.h"
 #include <cstddef>
+#include <zvec/ailego/internal/platform.h>
 
 #if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
 #include <intrin.h>
-#elif !defined(_MSC_VER) && !defined(__ARM_ARCH) && \
-    !(defined(__aarch64__) || defined(_M_ARM64))
+#elif !defined(_MSC_VER) && !defined(__ARM_ARCH) && !defined(AILEGO_ARM64)
 #include <cpuid.h>
 #endif
 
@@ -49,8 +49,7 @@ CpuFeatures::CpuFlags::CpuFlags(void)
   L7_ECX = l7[2];
   L7_EDX = l7[3];
 }
-#elif !defined(_MSC_VER) && !defined(__ARM_ARCH) && \
-    !(defined(__aarch64__) || defined(_M_ARM64))
+#elif !defined(_MSC_VER) && !defined(__ARM_ARCH) && !defined(AILEGO_ARM64)
 CpuFeatures::CpuFlags::CpuFlags(void)
     : L1_ECX(0), L1_EDX(0), L7_EBX(0), L7_ECX(0), L7_EDX(0) {
   uint32_t eax, ebx, ecx, edx;
@@ -338,7 +337,7 @@ bool CpuFeatures::HYPERVISOR(void) {
 
 const char *CpuFeatures::Intrinsics(void) {
   return ""
-#if (defined(__ARM_NEON) || defined(_M_ARM64))
+#if defined(AILEGO_HAVE_NEON)
          "Neon"
 #if defined(__ARM_FEATURE_CRC32)
          "+CRC"

@@ -51,8 +51,7 @@ struct Normalizer {
   }
 };
 
-#if defined(__SSE__) || ((defined(__ARM_NEON) || defined(_M_ARM64)) && \
-                         (defined(__aarch64__) || defined(_M_ARM64)))
+#if defined(__SSE__) || (defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64))
 /*! Normalizer (FP32)
  */
 template <>

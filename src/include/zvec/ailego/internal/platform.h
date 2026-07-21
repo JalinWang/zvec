@@ -14,6 +14,22 @@
 
 #pragma once
 
+// Architecture / SIMD feature detection, defined once so the guards below
+// (and across the codebase) read clearly instead of repeating long
+// compiler-macro disjunctions:
+//
+//   AILEGO_ARM64     - 64-bit ARM (AArch64). GCC/Clang predefine __aarch64__;
+//                      MSVC predefines _M_ARM64.
+//   AILEGO_HAVE_NEON - NEON intrinsics available. GCC/Clang predefine
+//                      __ARM_NEON; MSVC ARM64 has NEON (ARMv8 baseline) and
+//                      predefines only _M_ARM64.
+#if defined(__aarch64__) || defined(_M_ARM64)
+#define AILEGO_ARM64 1
+#endif
+#if defined(__ARM_NEON) || defined(_M_ARM64)
+#define AILEGO_HAVE_NEON 1
+#endif
+
 #if defined(_WIN32) || defined(_WIN64)
 #include <sdkddkver.h>
 #endif
@@ -39,7 +55,7 @@
 #if defined(__x86_64__) || defined(__i386)
 #include <x86intrin.h>
 #endif
-#if (defined(__ARM_NEON) || defined(_M_ARM64))
+#if defined(AILEGO_HAVE_NEON)
 #include <arm_neon.h>
 #endif
 #if defined(__ARM_FEATURE_CRC32)
@@ -114,8 +130,7 @@ extern "C" {
 #endif
 
 #if defined(__GNUC__)
-#if defined(__x86_64__) || (defined(__aarch64__) || defined(_M_ARM64)) || \
-    defined(__ppc64__)
+#if defined(__x86_64__) || defined(AILEGO_ARM64) || defined(__ppc64__)
 #define AILEGO_M64
 #else
 #define AILEGO_M32
@@ -240,7 +255,7 @@ static inline int ailego_clz64(uint64_t x) {
 #define ailego_popcount ailego_popcount32
 #endif  // AILEGO_M64
 
-#if defined(__arm__) || (defined(__aarch64__) || defined(_M_ARM64))
+#if defined(__arm__) || defined(AILEGO_ARM64)
 // ARMv7 Architecture Reference Manual (for YIELD)
 // ARM Compiler toolchain Compiler Reference (for __yield() instrinsic)
 #if defined(__CC_ARM) || defined(_MSC_VER)
@@ -287,12 +302,11 @@ static inline int ailego_clz64(uint64_t x) {
 #define ailego_malloc(SIZE) ailego_aligned_malloc((SIZE), 32)
 #elif defined(__SSE__)
 #define ailego_malloc(SIZE) ailego_aligned_malloc((SIZE), 16)
-#elif (defined(__ARM_NEON) || defined(_M_ARM64))
+#elif defined(AILEGO_HAVE_NEON)
 #define ailego_malloc(SIZE) ailego_aligned_malloc((SIZE), 16)
 #endif
 #endif  // !ailego_malloc
-#if (defined(__SSE__) || (defined(__ARM_NEON) || defined(_M_ARM64))) && \
-    !defined(ailego_free)
+#if (defined(__SSE__) || defined(AILEGO_HAVE_NEON)) && !defined(ailego_free)
 #define ailego_free ailego_aligned_free
 #endif
 #endif  // !__SANITIZE_ADDRESS__

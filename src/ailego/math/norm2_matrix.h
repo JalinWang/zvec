@@ -371,8 +371,7 @@ struct SquaredNorm2Matrix<uint8_t, M, typename std::enable_if<M >= 2>::type> {
   }
 };
 
-#if defined(__SSE__) || ((defined(__ARM_NEON) || defined(_M_ARM64)) && \
-                         (defined(__aarch64__) || defined(_M_ARM64)))
+#if defined(__SSE__) || (defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64))
 /*! L2-Norm Matrix (FP32, M=1)
  */
 template <>
