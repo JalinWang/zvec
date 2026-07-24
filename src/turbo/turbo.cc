@@ -22,9 +22,18 @@
 #include "avx512_vnni/uniform_int8/quantize.h"
 #include "avx512_vnni/uniform_int8/squared_euclidean.h"
 #include "neon/rotate/fht/fht.h"
+#include "scalar/fp16/cosine.h"
+#include "scalar/fp16/inner_product.h"
+#include "scalar/fp16/squared_euclidean.h"
 #include "scalar/fp32/cosine.h"
 #include "scalar/fp32/inner_product.h"
 #include "scalar/fp32/squared_euclidean.h"
+#include "scalar/record_quantized_int4/cosine.h"
+#include "scalar/record_quantized_int4/inner_product.h"
+#include "scalar/record_quantized_int4/squared_euclidean.h"
+#include "scalar/record_quantized_int8/cosine.h"
+#include "scalar/record_quantized_int8/inner_product.h"
+#include "scalar/record_quantized_int8/squared_euclidean.h"
 #include "scalar/rotate/fht/fht.h"
 #include "sse/rotate/fht/fht.h"
 
@@ -53,8 +62,38 @@ DistanceFunc get_distance_func(MetricType metric_type, DataType data_type,
     }
     return nullptr;
   }
+  if (data_type == DataType::kFp16) {
+    if (quantize_type == QuantizeType::kDefault ||
+        quantize_type == QuantizeType::kFp16) {
+      if (metric_type == MetricType::kCosine) {
+        return scalar::cosine_fp16_distance;
+      }
+      if (metric_type == MetricType::kSquaredEuclidean) {
+        return scalar::squared_euclidean_fp16_distance;
+      }
+      if (metric_type == MetricType::kInnerProduct) {
+        return scalar::inner_product_fp16_distance;
+      }
+    }
+    return nullptr;
+  }
+  if (data_type == DataType::kInt4) {
+    if (quantize_type == QuantizeType::kRecord) {
+      if (metric_type == MetricType::kSquaredEuclidean) {
+        return scalar::squared_euclidean_int4_distance;
+      }
+      if (metric_type == MetricType::kCosine) {
+        return scalar::cosine_int4_distance;
+      }
+      if (metric_type == MetricType::kInnerProduct) {
+        return scalar::inner_product_int4_distance;
+      }
+    }
+    return nullptr;
+  }
   if (data_type == DataType::kInt8) {
-    if (quantize_type == QuantizeType::kDefault) {
+    if (quantize_type == QuantizeType::kDefault ||
+        quantize_type == QuantizeType::kRecord) {
       if (zvec::ailego::internal::CpuFeatures::static_flags_.AVX512_VNNI &&
           IsArchMatch(cpu_arch_type, CpuArchType::kAVX512VNNI)) {
         if (metric_type == MetricType::kSquaredEuclidean) {
@@ -62,6 +101,19 @@ DistanceFunc get_distance_func(MetricType metric_type, DataType data_type,
         }
         if (metric_type == MetricType::kCosine) {
           return avx512_vnni::cosine_int8_distance;
+        }
+      }
+      // Scalar fallbacks are only exposed for the kRecord quantize type to
+      // keep the historical kDefault dispatch behavior unchanged.
+      if (quantize_type == QuantizeType::kRecord) {
+        if (metric_type == MetricType::kSquaredEuclidean) {
+          return scalar::squared_euclidean_int8_distance;
+        }
+        if (metric_type == MetricType::kCosine) {
+          return scalar::cosine_int8_distance;
+        }
+        if (metric_type == MetricType::kInnerProduct) {
+          return scalar::inner_product_int8_distance;
         }
       }
     }
@@ -96,8 +148,38 @@ BatchDistanceFunc get_batch_distance_func(MetricType metric_type,
     }
     return nullptr;
   }
+  if (data_type == DataType::kFp16) {
+    if (quantize_type == QuantizeType::kDefault ||
+        quantize_type == QuantizeType::kFp16) {
+      if (metric_type == MetricType::kCosine) {
+        return scalar::cosine_fp16_batch_distance;
+      }
+      if (metric_type == MetricType::kSquaredEuclidean) {
+        return scalar::squared_euclidean_fp16_batch_distance;
+      }
+      if (metric_type == MetricType::kInnerProduct) {
+        return scalar::inner_product_fp16_batch_distance;
+      }
+    }
+    return nullptr;
+  }
+  if (data_type == DataType::kInt4) {
+    if (quantize_type == QuantizeType::kRecord) {
+      if (metric_type == MetricType::kSquaredEuclidean) {
+        return scalar::squared_euclidean_int4_batch_distance;
+      }
+      if (metric_type == MetricType::kCosine) {
+        return scalar::cosine_int4_batch_distance;
+      }
+      if (metric_type == MetricType::kInnerProduct) {
+        return scalar::inner_product_int4_batch_distance;
+      }
+    }
+    return nullptr;
+  }
   if (data_type == DataType::kInt8) {
-    if (quantize_type == QuantizeType::kDefault) {
+    if (quantize_type == QuantizeType::kDefault ||
+        quantize_type == QuantizeType::kRecord) {
       if (zvec::ailego::internal::CpuFeatures::static_flags_.AVX512_VNNI &&
           IsArchMatch(cpu_arch_type, CpuArchType::kAVX512VNNI)) {
         if (metric_type == MetricType::kSquaredEuclidean) {
@@ -105,6 +187,20 @@ BatchDistanceFunc get_batch_distance_func(MetricType metric_type,
         }
         if (metric_type == MetricType::kCosine) {
           return avx512_vnni::cosine_int8_batch_distance;
+        }
+      }
+      // Scalar fallbacks are only exposed for the kRecord quantize type to
+      // keep the historical kDefault dispatch behavior unchanged. The scalar
+      // batch kernels take a plain int8 query (no preprocessing required).
+      if (quantize_type == QuantizeType::kRecord) {
+        if (metric_type == MetricType::kSquaredEuclidean) {
+          return scalar::squared_euclidean_int8_batch_distance;
+        }
+        if (metric_type == MetricType::kCosine) {
+          return scalar::cosine_int8_batch_distance;
+        }
+        if (metric_type == MetricType::kInnerProduct) {
+          return scalar::inner_product_int8_batch_distance;
         }
       }
     }
@@ -126,7 +222,8 @@ QueryPreprocessFunc get_query_preprocess_func(MetricType metric_type,
                                               QuantizeType quantize_type,
                                               CpuArchType cpu_arch_type) {
   if (data_type == DataType::kInt8) {
-    if (quantize_type == QuantizeType::kDefault) {
+    if (quantize_type == QuantizeType::kDefault ||
+        quantize_type == QuantizeType::kRecord) {
       if (zvec::ailego::internal::CpuFeatures::static_flags_.AVX512_VNNI &&
           IsArchMatch(cpu_arch_type, CpuArchType::kAVX512VNNI)) {
         if (metric_type == MetricType::kSquaredEuclidean) {
