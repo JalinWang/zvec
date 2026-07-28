@@ -35,9 +35,7 @@ using namespace zvec::core;
  */
 class Int8Quantizer : public Quantizer {
  public:
-  Int8Quantizer() {
-    type_ = QuantizeType::kRecord;
-  }
+  Int8Quantizer() : Quantizer(QuantizeType::kRecord) {}
 
   virtual ~Int8Quantizer() {}
 

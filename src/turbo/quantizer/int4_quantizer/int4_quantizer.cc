@@ -56,11 +56,11 @@ int Int4Quantizer::init(const IndexMeta &meta,
   dist_dim_ = static_cast<size_t>(original_dim_) + 2 * extra_meta_size_;
 
   // Cache the distance dispatch for the new Quantizer interface.
-  auto metric = metric_from_name(metric_name);
-  dp_query_func_ = get_distance_func(metric, DataType::kInt4,
-                                     QuantizeType::kRecord, CpuArchType::kAuto);
-  dp_query_batch_func_ = get_batch_distance_func(
-      metric, DataType::kInt4, QuantizeType::kRecord, CpuArchType::kAuto);
+  auto kernels =
+      get_distance_kernels(metric_from_name(metric_name), DataType::kInt4,
+                           QuantizeType::kRecord, CpuArchType::kAuto);
+  dp_query_func_ = std::move(kernels.dist);
+  dp_query_batch_func_ = std::move(kernels.batch);
 
   return 0;
 }

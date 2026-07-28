@@ -47,7 +47,6 @@ class Quantizer {
  public:
   typedef std::shared_ptr<Quantizer> Pointer;
 
-  Quantizer() {}
   virtual ~Quantizer() {}
 
   //! Initialize quantizer with index metadata and parameters
@@ -148,6 +147,9 @@ class Quantizer {
   }
 
  protected:
+  //! Subclasses must declare which QuantizeType they implement.
+  explicit Quantizer(QuantizeType type) : type_(type) {}
+
   //! Map a metric name (e.g. "SquaredEuclidean", "Cosine",
   //! "InnerProduct", "MipsSquaredEuclidean") to its MetricType.
   static MetricType metric_from_name(const std::string &name) {
@@ -166,7 +168,7 @@ class Quantizer {
     return MetricType::kUnknown;
   }
 
-  QuantizeType type_{QuantizeType::kDefault};
+  QuantizeType type_;
   uint32_t extra_meta_size_{0};
 };
 
