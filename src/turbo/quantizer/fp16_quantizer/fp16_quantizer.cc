@@ -41,6 +41,10 @@ int Fp16Quantizer::init(const IndexMeta &meta,
   auto kernels =
       get_distance_kernels(metric_from_name(metric_name), DataType::kFp16,
                            QuantizeType::kFp16, CpuArchType::kAuto);
+  if (!kernels.dist || !kernels.batch) {
+    LOG_ERROR("Unsupported metric %s for FP16 quantizer", metric_name.c_str());
+    return kErrUnsupported;
+  }
   dp_query_func_ = std::move(kernels.dist);
   dp_query_batch_func_ = std::move(kernels.batch);
 
