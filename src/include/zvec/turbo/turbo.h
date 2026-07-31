@@ -88,11 +88,9 @@ enum class DataType {
 };
 
 enum class QuantizeType {
-  //! Deprecated: no dispatch row serves kDefault anymore; request the
-  //! explicit quantize type (kFp32, kFp16, kRecord, ...) instead. The
-  //! enumerator is kept (value 0) for serialized-header compatibility.
-  kDefault [[deprecated("request an explicit QuantizeType instead")]],
-  kUniform,
+  // Explicit values: type ids are persisted in serialized headers
+  // (QuantizerSerHeader.quant_type); 0 was the retired kDefault.
+  kUniform = 1,
   kRecord,
   kFp16,
   kFp32,
@@ -143,7 +141,7 @@ struct DistanceKernels {
 
 // Aggregate lookup: resolves dist/batch/preprocess in one pass so callers
 // cannot pair functions from different kernel families.
-DistanceKernels get_distance_kernels(
+ZVEC_TURBO_API DistanceKernels get_distance_kernels(
     MetricType metric_type, DataType data_type, QuantizeType quantize_type,
     CpuArchType cpu_arch_type = CpuArchType::kAuto);
 
@@ -157,7 +155,7 @@ ZVEC_TURBO_API UniformQuantizeFunc
 get_uniform_quantize_func(DataType data_type);
 
 // Returns rotator kernels dispatched for the current CPU.
-RotatorKernels get_rotator_kernels(
+ZVEC_TURBO_API RotatorKernels get_rotator_kernels(
     RotateType rotate_type, CpuArchType cpu_arch_type = CpuArchType::kAuto);
 
 }  // namespace zvec::turbo
