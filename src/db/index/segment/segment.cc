@@ -16,7 +16,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -4215,7 +4214,7 @@ Status SegmentImpl::recover() {
 
   std::string wal_file_path =
       FileHelper::MakeWalPath(path_, segment_meta_->id(), mem_block.id_);
-  if (!std::filesystem::exists(wal_file_path)) {
+  if (!FileHelper::FileExists(wal_file_path)) {
     LOG_INFO("WAL recovery skipped: no WAL file exists [%s]",
              wal_file_path.c_str());
     return Status::OK();
@@ -4331,7 +4330,7 @@ Status SegmentImpl::open_wal_file() {
   std::string wal_file_path =
       FileHelper::MakeWalPath(path_, segment_meta_->id(), mem_block.id_);
   WalOptions wal_option;
-  if (std::filesystem::exists(wal_file_path)) {
+  if (FileHelper::FileExists(wal_file_path)) {
     wal_option.create_new = false;
   } else {
     wal_option.create_new = true;
