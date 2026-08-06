@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include <cstdio>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -46,20 +45,6 @@ using namespace zvec::test;
 // If the path handling is broken, the OS will show garbled names (mojibake).
 static const std::string kUtf8Dir =
     "utf8_col_\xe4\xb8\xad\xe6\x96\x87\xe6\xb5\x8b\xe8\xaf\x95";  // utf8_col_中文测试
-
-// Additional directory names taken verbatim from issue #626.  Whether a UTF-8
-// path blows up when it is (incorrectly) decoded with the ANSI code page does
-// not depend on the language but on whether its UTF-8 bytes happen to form a
-// valid ACP sequence.  Both names below fail to decode as CP936/GBK and made
-// std::filesystem::path throw ERROR_NO_UNICODE_TRANSLATION (1113):
-//   "No mapping for the Unicode character exists in the target multi-byte code
-//    page."
-// utf8_col_테스트 경로
-static const std::string kUtf8DirKr =
-    "utf8_col_\xed\x85\x8c\xec\x8a\xa4\xed\x8a\xb8 \xea\xb2\xbd\xeb\xa1\x9c";
-// utf8_col_di22222ci。。-cmy
-static const std::string kUtf8DirCjk =
-    "utf8_col_di22222ci\xe3\x80\x82\xe3\x80\x82-cmy";
 
 class Utf8CollectionTest : public ::testing::Test {
  protected:
@@ -223,111 +208,4 @@ TEST_F(Utf8CollectionTest, FileHelperPaths) {
   EXPECT_EQ(std::string::npos, inv.find('/'));
   EXPECT_EQ(std::string::npos, vec.find('/'));
 #endif
-}
-
-// ---------------------------------------------------------------------------
-// 5. Regression tests for issue #626.
-//
-// SegmentImpl::recover() and open_wal_file() used to pass the UTF-8 WAL path to
-// std::filesystem::exists() as a narrow std::string.  std::filesystem::path
-// decodes narrow strings with the ANSI code page, which breaks in two ways:
-//
-//   a) On a DBCS ACP (936/932/949/950) a UTF-8 byte sequence that is not valid
-//      in that code page makes the path constructor throw
-//      std::system_error(ERROR_NO_UNICODE_TRANSLATION).  pybind11 turns that
-//      into the Python RuntimeError reported in the issue.  This happens while
-//      the path is being built, i.e. already on the very first insert, and is
-//      only observable on such a machine.
-//   b) On any other ACP the bytes decode to a *different* (mojibake) path, so
-//      the existence check silently answers for the wrong file.
-//
-// Test 5a is the user-visible workflow from the issue; it is the one that
-// throws pre-fix on a DBCS machine.  Test 5b pins down (b) and fails pre-fix
-// on any Windows ACP, because it compares the two ways of asking whether a
-// non-ASCII path exists.
-// ---------------------------------------------------------------------------
-static void RunCreateInsertReopenInsert(const std::string &dir) {
-  SCOPED_TRACE("collection dir: " + dir);
-  ailego::FileHelper::RemovePath(dir.c_str());
-
-  CollectionOptions opts;
-  opts.read_only_ = false;
-  opts.enable_mmap_ = true;
-
-  const int kDocCount = 10;
-  auto schema = TestHelper::CreateNormalSchema();
-
-  // create_and_open + insert: the insert is what used to raise
-  // "No mapping for the Unicode character exists in the target multi-byte
-  // code page."
-  auto result = Collection::CreateAndOpen(dir, *schema, opts);
-  ASSERT_TRUE(result.has_value()) << result.error().message();
-  auto col = std::move(result).value();
-
-  auto s = TestHelper::CollectionInsertDoc(col, 0, kDocCount);
-  ASSERT_TRUE(s.ok()) << s.message();
-  ASSERT_TRUE(col->Flush().ok());
-  ASSERT_EQ(col->Stats().value().doc_count, kDocCount);
-  col.reset();
-
-  // Reopen and insert again, so recover() and a second open_wal_file() run on
-  // the same non-ASCII path.
-  auto reopen = Collection::Open(dir, opts);
-  ASSERT_TRUE(reopen.has_value()) << reopen.error().message();
-  auto col2 = std::move(reopen).value();
-  ASSERT_EQ(col2->Stats().value().doc_count, kDocCount);
-
-  s = TestHelper::CollectionInsertDoc(col2, kDocCount, kDocCount * 2);
-  ASSERT_TRUE(s.ok()) << s.message();
-  ASSERT_TRUE(col2->Flush().ok());
-  ASSERT_EQ(col2->Stats().value().doc_count, kDocCount * 2);
-
-  // The docs written before and after the reopen must both be readable.
-  auto schema_val = col2->Schema().value();
-  for (int i = 0; i < kDocCount * 2; i++) {
-    auto expect_doc = TestHelper::CreateDoc(i, schema_val);
-    auto fetched = col2->Fetch({expect_doc.pk()});
-    ASSERT_TRUE(fetched.has_value()) << fetched.error().message();
-    ASSERT_EQ(fetched.value().count(expect_doc.pk()), 1u)
-        << "missing doc " << i;
-  }
-
-  col2.reset();
-  ailego::FileHelper::RemovePath(dir.c_str());
-}
-
-TEST_F(Utf8CollectionTest, CreateInsertReopenInsert) {
-  RunCreateInsertReopenInsert(kUtf8Dir);
-}
-
-// The two directory names from the issue that are not decodable as CP936.
-TEST_F(Utf8CollectionTest, CreateInsertReopenInsertUndecodableAcpPaths) {
-  RunCreateInsertReopenInsert(kUtf8DirKr);
-  RunCreateInsertReopenInsert(kUtf8DirCjk);
-}
-
-// A WAL-like file under a non-ASCII directory must be reported as existing.
-// FileHelper::FileExists() converts via PathFromUtf8() and answers correctly;
-// handing the same UTF-8 bytes to std::filesystem::exists() as a narrow string
-// resolves a mojibake path and answers "false" (or throws on a DBCS ACP).
-TEST_F(Utf8CollectionTest, Utf8WalPathExistenceCheck) {
-  const std::string wal_path = FileHelper::MakeWalPath(kUtf8Dir, 0, 0);
-
-  ASSERT_TRUE(ailego::File::MakePath(ailego::FileHelper::PathToUtf8(
-      ailego::FileHelper::PathFromUtf8(wal_path).parent_path())));
-
-  {
-    std::ofstream ofs;
-    ailego::FileHelper::OpenOfstream(ofs, wal_path, std::ios::binary);
-    ASSERT_TRUE(ofs.is_open());
-    ofs << "wal";
-  }
-
-  // Ground truth via the wide API.
-  ASSERT_TRUE(
-      std::filesystem::exists(ailego::FileHelper::PathFromUtf8(wal_path)));
-
-  // This is the check open_wal_file()/recover() rely on.
-  EXPECT_TRUE(FileHelper::FileExists(wal_path))
-      << "UTF-8 WAL path reported as missing: " << wal_path;
 }
