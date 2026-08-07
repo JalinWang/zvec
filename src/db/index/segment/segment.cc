@@ -582,6 +582,16 @@ Status SegmentImpl::close() {
   }
   quant_memory_vector_indexers_.clear();
 
+  // Release forward stores and wal so their file handles/mappings are
+  // dropped before cleanup() removes the segment directory (on Windows
+  // open/mapped files cannot be deleted).
+  persist_stores_.clear();
+  memory_store_.reset();
+  if (wal_file_) {
+    wal_file_->close();
+    wal_file_.reset();
+  }
+
   return Status::OK();
 }
 
@@ -2343,7 +2353,12 @@ Status SegmentImpl::destroy() {
 
 Status SegmentImpl::cleanup() {
   auto seg_path = FileHelper::MakeSegmentPath(path_, segment_meta_->id());
-  FileHelper::RemoveDirectory(seg_path);
+  if (!FileHelper::RemoveDirectory(seg_path)) {
+    LOG_ERROR("Failed to remove destroyed segment directory: %s",
+              seg_path.c_str());
+    return Status::InternalError(
+        "Failed to remove destroyed segment directory: %s", seg_path.c_str());
+  }
   return Status::OK();
 }
 
