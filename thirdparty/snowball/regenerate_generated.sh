@@ -8,6 +8,13 @@
 # Usage:
 #   thirdparty/snowball/regenerate_generated.sh [snowball_source_dir]
 #
+# Example:
+#   # Regenerate from the default snowball-* directory next to this script:
+#   thirdparty/snowball/regenerate_generated.sh
+#
+#   # Regenerate from an explicit Snowball source directory:
+#   thirdparty/snowball/regenerate_generated.sh thirdparty/snowball/snowball-3.1.1
+#
 # The default snowball_source_dir is the snowball-* directory next to this
 # script.
 
