@@ -1,7 +1,7 @@
 # CMake-native code generation for Snowball UTF-8 stemmers.
 #
-# This is a CMake translation of Snowball's GNUmakefile generation rules.
-# It does not require GNU Make, Perl, or sed.
+# This is a CMake translation of Snowball's GNUmakefile UTF-8 generation
+# rules. It does not require GNU Make, Perl, or sed.
 #
 # Usage from thirdparty/snowball/CMakeLists.txt:
 #   include("${CMAKE_CURRENT_SOURCE_DIR}/snowball_codegen.cmake")
@@ -43,11 +43,14 @@ function(snowball_generate_utf8)
   # -------------------------------------------------------------------------
   # Parse modules.txt → UTF-8 algorithm list and alias table
   # -------------------------------------------------------------------------
+  set(_modules_txt "${SNOWBALL_GEN_SOURCE_DIR}/libstemmer/modules.txt")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_modules_txt}")
+
   set(_gen_srcs)
   set(_gen_hdrs)
   set(_algorithms)
   set(_aliases)
-  file(STRINGS "${SNOWBALL_GEN_SOURCE_DIR}/libstemmer/modules.txt" _lines)
+  file(STRINGS "${_modules_txt}" _lines)
   foreach(_line IN LISTS _lines)
     if(_line MATCHES "^[ \t]*#" OR _line MATCHES "^[ \t]*$")
       continue()
@@ -78,7 +81,7 @@ function(snowball_generate_utf8)
 
   if(NOT _algorithms)
     message(FATAL_ERROR
-      "No UTF_8 algorithms parsed from ${SNOWBALL_GEN_SOURCE_DIR}/libstemmer/modules.txt")
+            "No UTF_8 algorithms parsed from ${_modules_txt}")
   endif()
 
   # -------------------------------------------------------------------------
