@@ -22,19 +22,41 @@
 #include <arrow/table.h>
 #include <parquet/arrow/reader.h>
 #include <zvec/ailego/logger/logger.h>
+#include <zvec/ailego/utility/file_helper.h>
 
 namespace zvec {
 
+// `filename` is a UTF-8 path, potentially non-ASCII. stat(filename.c_str())
+// decodes the narrow string with the process ANSI code page on Windows, so
+// it can silently fail (and leave file_id/mtime at their default 0) for a
+// path that decodes fine as UTF-8 -- the same hazard fixed for the WAL path
+// in SegmentImpl (issue #626). Go through PathFromUtf8() first so both the
+// stat() call and last_write_time() operate on a correctly decoded path.
 ParquetBufferID::ParquetBufferID(const std::string &filename, int column,
                                  int row_group)
     : filename(filename), column(column), row_group(row_group) {
-  struct stat file_stat;
-  if (stat(filename.c_str(), &file_stat) == 0) {
-    file_id = file_stat.st_ino;
-    std::filesystem::path p(filename);
-    auto ftime = std::filesystem::last_write_time(p);
-    mtime = static_cast<std::uint64_t>(ftime.time_since_epoch().count());
+  const std::filesystem::path fs_path =
+      ailego::FileHelper::PathFromUtf8(filename);
+  std::error_code ec;
+  const auto ftime = std::filesystem::last_write_time(fs_path, ec);
+  if (ec) {
+    return;
   }
+  mtime = static_cast<std::uint64_t>(ftime.time_since_epoch().count());
+
+#if defined(_WIN32) || defined(_WIN64)
+  // _wstat maps to _wstat64i32(), which takes struct _stat64i32, a distinct
+  // type from the narrow-only struct stat used by stat() below.
+  struct _stat64i32 file_stat;
+  if (_wstat(fs_path.c_str(), &file_stat) == 0) {
+    file_id = file_stat.st_ino;
+  }
+#else
+  struct stat file_stat;
+  if (stat(fs_path.c_str(), &file_stat) == 0) {
+    file_id = file_stat.st_ino;
+  }
+#endif
 }
 
 const std::string ParquetBufferID::to_string() const {

@@ -29,10 +29,17 @@
 // Which of the two happens depends on the byte pattern, not on the language,
 // which is why only some non-ASCII paths appeared broken in the report.
 //
+// Single-byte code pages such as 1252 (Western European) are added purely
+// for extra regression coverage: every byte value maps to some character in
+// them, so decoding can never throw, only silently resolve a non-ASCII UTF-8
+// path to mojibake -- a milder version of the same hazard, worth checking the
+// fix against too.
+//
 // The ACP is fixed when the process starts, so each code page gets its own test
 // binary with an embedded manifest that pins it (see CMakeLists.txt). One
 // machine therefore covers the code pages used in China, Japan, Korea and
-// Taiwan without touching the system locale.
+// Taiwan, plus a Western European single-byte one, without touching the
+// system locale.
 
 #include <filesystem>
 #include <fstream>
@@ -41,6 +48,7 @@
 #include <gtest/gtest.h>
 #include <zvec/ailego/utility/file_helper.h>
 #include "db/common/file_helper.h"
+#include "db/index/storage/parquet_buffer_pool.h"
 #include "index/utils/utils.h"
 #include "zvec/db/collection.h"
 #include "zvec/db/options.h"
@@ -74,6 +82,8 @@ const char *AcpDescription(unsigned int code_page) {
       return "Korean, UHC (double byte)";
     case 950:
       return "Chinese Traditional, Big5 (double byte)";
+    case 1252:
+      return "Western European, Windows-1252 (single byte)";
     case 65001:
       return "Unicode, UTF-8";
     default:
@@ -272,6 +282,39 @@ TEST_F(Utf8AcpTest, WalPathExistenceCheckIsAcpIndependent) {
     ASSERT_TRUE(std::filesystem::exists(wide));
     EXPECT_TRUE(FileHelper::FileExists(wal_path))
         << "reported as missing although it exists: " << wal_path;
+
+    Remove(dir);
+  }
+}
+
+// Regression test for the same ACP hazard in ParquetBufferID (used by the
+// forward store's buffer cache): it used to call stat() with a narrow,
+// ACP-decoded UTF-8 path and silently leave file_id/mtime at 0 when that
+// path could not be decoded under this ACP. Since ParquetBufferIDEqual
+// still compares filename directly, a stuck mtime of 0 does not corrupt the
+// cache's identity check by itself, but it does defeat the reason file_id/
+// mtime exist: detecting that the file at that path was replaced. Guard
+// that stat() now resolves under every ACP.
+TEST_F(Utf8AcpTest, ParquetBufferIdStatIsAcpIndependent) {
+  for (const auto &path_case : kPathCases) {
+    const std::string dir = DirFor(path_case) + "_pq";
+    SCOPED_TRACE(std::string(path_case.label) + " -> " + dir);
+    Remove(dir);
+    ASSERT_TRUE(ailego::FileHelper::MakePath(dir.c_str()));
+
+    const std::string file_path =
+        ailego::FileHelper::PathJoin(dir, "block.parquet");
+    {
+      std::ofstream ofs;
+      ailego::FileHelper::OpenOfstream(ofs, file_path, std::ios::binary);
+      ASSERT_TRUE(ofs.is_open());
+      ofs << "not a real parquet file, just needs to exist";
+    }
+
+    const ParquetBufferID id(file_path, /*column=*/0, /*row_group=*/0);
+    EXPECT_NE(id.mtime, 0u)
+        << "stat() failed to resolve the UTF-8 path under this ACP, so the "
+           "buffer cache cannot detect the file being replaced";
 
     Remove(dir);
   }
