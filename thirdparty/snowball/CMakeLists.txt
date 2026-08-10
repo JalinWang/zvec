@@ -1,10 +1,33 @@
 set(SNOWBALL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/snowball-3.1.1")
 set(SNOWBALL_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/snowball-codegen")
 
+# ---------------------------------------------------------------------------
+# Resolve the C compiler for building the Snowball code generator.
+# For cross-compiling, the generator must run on the build host, so a host
+# compiler is resolved separately from the target toolchain.
+# ---------------------------------------------------------------------------
+if(CMAKE_CROSSCOMPILING)
+  if(NOT SNOWBALL_HOST_CC)
+    find_program(SNOWBALL_HOST_CC
+      NAMES cc gcc clang
+      DOC "Host C compiler used to build the Snowball code generator"
+    )
+  endif()
+  if(NOT SNOWBALL_HOST_CC)
+    message(FATAL_ERROR
+      "Cross-compiling Snowball requires a host C compiler. "
+      "Set SNOWBALL_HOST_CC to a host cc/gcc/clang executable.")
+  endif()
+  set(_snowball_compiler "${SNOWBALL_HOST_CC}")
+else()
+  set(_snowball_compiler "${CMAKE_C_COMPILER}")
+endif()
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/snowball_codegen.cmake")
 snowball_generate_utf8(
   SOURCE_DIR "${SNOWBALL_SOURCE_DIR}"
   BUILD_DIR "${SNOWBALL_BUILD_DIR}"
+  COMPILER "${_snowball_compiler}"
 )
 
 set_source_files_properties(${SNOWBALL_GENERATED_SOURCES}
