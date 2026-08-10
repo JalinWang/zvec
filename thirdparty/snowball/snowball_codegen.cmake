@@ -8,15 +8,15 @@
 #   snowball_generate_utf8(
 #     SOURCE_DIR "${SNOWBALL_SOURCE_DIR}"
 #     BUILD_DIR "${SNOWBALL_BUILD_DIR}"
-#     COMPILER "${CMAKE_C_COMPILER}"
-#     [FLAGS ...]
+#     COMPILER "$<TARGET_FILE:snowball_compiler>"
+#     COMPILER_DEPENDENCY snowball_compiler
 #   )
 #
 # Parameters:
 #   SOURCE_DIR - path to the Snowball source tree (contains GNUmakefile)
 #   BUILD_DIR  - path to the codegen output directory
-#   COMPILER   - C compiler used to build the Snowball compiler executable
-#   FLAGS      - optional extra compiler flags (e.g. -isysroot on macOS)
+#   COMPILER   - Snowball compiler executable or generator expression
+#   COMPILER_DEPENDENCY - target or file that produces COMPILER
 #
 # After the call, the following variables are available in the caller scope:
 #   SNOWBALL_GENERATED_SOURCES - generated/runtime/libstemmer/stemmer sources
@@ -24,11 +24,16 @@
 #   SNOWBALL_CODEGEN_TARGET    - custom target that generates all outputs
 
 function(snowball_generate_utf8)
-  cmake_parse_arguments(SNOWBALL_GEN "" "SOURCE_DIR;BUILD_DIR;COMPILER" "" ${ARGN})
+  cmake_parse_arguments(SNOWBALL_GEN ""
+    "SOURCE_DIR;BUILD_DIR;COMPILER;COMPILER_DEPENDENCY" "" ${ARGN})
 
-  if(NOT SNOWBALL_GEN_SOURCE_DIR OR NOT SNOWBALL_GEN_BUILD_DIR OR NOT SNOWBALL_GEN_COMPILER)
+  if(NOT SNOWBALL_GEN_SOURCE_DIR OR
+     NOT SNOWBALL_GEN_BUILD_DIR OR
+     NOT SNOWBALL_GEN_COMPILER OR
+     NOT SNOWBALL_GEN_COMPILER_DEPENDENCY)
     message(FATAL_ERROR
-      "snowball_generate_utf8 requires SOURCE_DIR, BUILD_DIR, and COMPILER")
+      "snowball_generate_utf8 requires SOURCE_DIR, BUILD_DIR, COMPILER, and "
+      "COMPILER_DEPENDENCY")
   endif()
 
   file(MAKE_DIRECTORY
@@ -156,34 +161,8 @@ static const char * algorithm_names[] = {
   )
 
   # -------------------------------------------------------------------------
-  # Build the Snowball compiler and generate stemmer sources
+  # Generate stemmer sources with the native Snowball compiler
   # -------------------------------------------------------------------------
-  file(GLOB _compiler_srcs CONFIGURE_DEPENDS
-    "${SNOWBALL_GEN_SOURCE_DIR}/compiler/*.c"
-  )
-
-  set(_snowball_compiler_exe "${SNOWBALL_GEN_BUILD_DIR}/host/snowball_compiler")
-  if(WIN32)
-    string(APPEND _snowball_compiler_exe ".exe")
-  endif()
-
-  add_custom_command(
-    OUTPUT "${_snowball_compiler_exe}"
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-            "${SNOWBALL_GEN_BUILD_DIR}/host"
-    COMMAND "${SNOWBALL_GEN_COMPILER}"
-            -O2
-            ${SNOWBALL_GEN_FLAGS}
-            -I "${SNOWBALL_GEN_SOURCE_DIR}/compiler"
-            -o "${_snowball_compiler_exe}"
-            ${_compiler_srcs}
-    DEPENDS ${_compiler_srcs}
-            "${SNOWBALL_GEN_SOURCE_DIR}/compiler/header.h"
-            "${SNOWBALL_GEN_SOURCE_DIR}/compiler/tokens.h"
-    COMMENT "Building Snowball compiler with ${SNOWBALL_GEN_COMPILER}"
-    VERBATIM
-  )
-
   foreach(_alg IN LISTS _algorithms)
     add_custom_command(
       OUTPUT
@@ -191,13 +170,13 @@ static const char * algorithm_names[] = {
         "${SNOWBALL_GEN_BUILD_DIR}/src_c/stem_UTF_8_${_alg}.h"
       COMMAND ${CMAKE_COMMAND} -E make_directory
               "${SNOWBALL_GEN_BUILD_DIR}/src_c"
-      COMMAND ${_snowball_compiler_exe}
+      COMMAND ${SNOWBALL_GEN_COMPILER}
               "${SNOWBALL_GEN_SOURCE_DIR}/algorithms/${_alg}.sbl"
               -o "${SNOWBALL_GEN_BUILD_DIR}/src_c/stem_UTF_8_${_alg}.c"
               -eprefix "${_alg}_UTF_8_"
               -r ../runtime
               -u
-      DEPENDS ${_snowball_compiler_exe}
+      DEPENDS ${SNOWBALL_GEN_COMPILER_DEPENDENCY}
               "${SNOWBALL_GEN_SOURCE_DIR}/algorithms/${_alg}.sbl"
       VERBATIM
     )

@@ -2,11 +2,13 @@ set(SNOWBALL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/snowball-3.1.1")
 set(SNOWBALL_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/snowball-codegen")
 
 # ---------------------------------------------------------------------------
-# Resolve the C compiler and flags for building the Snowball code generator.
-# For cross-compiling, the generator must run on the build host, so a host
-# compiler is resolved separately from the target toolchain.
+# Build the Snowball compiler as a native tool. When cross-compiling, it must
+# be built directly with a host compiler instead of the target toolchain.
 # ---------------------------------------------------------------------------
-set(_snowball_compiler_flags "")
+file(GLOB _snowball_compiler_srcs CONFIGURE_DEPENDS
+  "${SNOWBALL_SOURCE_DIR}/compiler/*.c"
+)
+
 if(CMAKE_CROSSCOMPILING)
   if(NOT SNOWBALL_HOST_CC)
     find_program(SNOWBALL_HOST_CC
@@ -19,12 +21,49 @@ if(CMAKE_CROSSCOMPILING)
       "Cross-compiling Snowball requires a host C compiler. "
       "Set SNOWBALL_HOST_CC to a host cc/gcc/clang executable.")
   endif()
-  set(_snowball_compiler "${SNOWBALL_HOST_CC}")
-else()
-  set(_snowball_compiler "${CMAKE_C_COMPILER}")
-  if(APPLE AND CMAKE_OSX_SYSROOT)
-    set(_snowball_compiler_flags -isysroot "${CMAKE_OSX_SYSROOT}")
+
+  set(_snowball_compiler_exe
+      "${SNOWBALL_BUILD_DIR}/host/snowball_compiler")
+  if(CMAKE_HOST_WIN32)
+    string(APPEND _snowball_compiler_exe ".exe")
   endif()
+
+  add_custom_command(
+    OUTPUT "${_snowball_compiler_exe}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${SNOWBALL_BUILD_DIR}/host"
+    COMMAND "${SNOWBALL_HOST_CC}"
+            -O2
+            -I "${SNOWBALL_SOURCE_DIR}/compiler"
+            -o "${_snowball_compiler_exe}"
+            ${_snowball_compiler_srcs}
+    DEPENDS ${_snowball_compiler_srcs}
+            "${SNOWBALL_SOURCE_DIR}/compiler/header.h"
+            "${SNOWBALL_SOURCE_DIR}/compiler/tokens.h"
+    COMMENT "Building Snowball compiler with ${SNOWBALL_HOST_CC}"
+    VERBATIM
+  )
+
+  set(_snowball_compiler "${_snowball_compiler_exe}")
+  set(_snowball_compiler_dependency "${_snowball_compiler_exe}")
+else()
+  if(NOT TARGET snowball_compiler)
+    add_executable(snowball_compiler EXCLUDE_FROM_ALL
+      ${_snowball_compiler_srcs}
+    )
+    target_include_directories(snowball_compiler PRIVATE
+      "${SNOWBALL_SOURCE_DIR}/compiler"
+    )
+    if(MSVC)
+      target_compile_definitions(snowball_compiler PRIVATE
+        _CRT_SECURE_NO_WARNINGS
+      )
+    endif()
+    set_target_properties(snowball_compiler PROPERTIES C_STANDARD 99)
+  endif()
+
+  set(_snowball_compiler "$<TARGET_FILE:snowball_compiler>")
+  set(_snowball_compiler_dependency snowball_compiler)
 endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/snowball_codegen.cmake")
@@ -32,7 +71,7 @@ snowball_generate_utf8(
   SOURCE_DIR "${SNOWBALL_SOURCE_DIR}"
   BUILD_DIR "${SNOWBALL_BUILD_DIR}"
   COMPILER "${_snowball_compiler}"
-  FLAGS ${_snowball_compiler_flags}
+  COMPILER_DEPENDENCY "${_snowball_compiler_dependency}"
 )
 
 set_source_files_properties(${SNOWBALL_GENERATED_SOURCES}
