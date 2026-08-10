@@ -2,10 +2,11 @@ set(SNOWBALL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/snowball-3.1.1")
 set(SNOWBALL_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/snowball-codegen")
 
 # ---------------------------------------------------------------------------
-# Resolve the C compiler for building the Snowball code generator.
+# Resolve the C compiler and flags for building the Snowball code generator.
 # For cross-compiling, the generator must run on the build host, so a host
 # compiler is resolved separately from the target toolchain.
 # ---------------------------------------------------------------------------
+set(_snowball_compiler_flags "")
 if(CMAKE_CROSSCOMPILING)
   if(NOT SNOWBALL_HOST_CC)
     find_program(SNOWBALL_HOST_CC
@@ -21,6 +22,9 @@ if(CMAKE_CROSSCOMPILING)
   set(_snowball_compiler "${SNOWBALL_HOST_CC}")
 else()
   set(_snowball_compiler "${CMAKE_C_COMPILER}")
+  if(APPLE AND CMAKE_OSX_SYSROOT)
+    set(_snowball_compiler_flags -isysroot "${CMAKE_OSX_SYSROOT}")
+  endif()
 endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/snowball_codegen.cmake")
@@ -28,6 +32,7 @@ snowball_generate_utf8(
   SOURCE_DIR "${SNOWBALL_SOURCE_DIR}"
   BUILD_DIR "${SNOWBALL_BUILD_DIR}"
   COMPILER "${_snowball_compiler}"
+  FLAGS ${_snowball_compiler_flags}
 )
 
 set_source_files_properties(${SNOWBALL_GENERATED_SOURCES}

@@ -9,12 +9,14 @@
 #     SOURCE_DIR "${SNOWBALL_SOURCE_DIR}"
 #     BUILD_DIR "${SNOWBALL_BUILD_DIR}"
 #     COMPILER "${CMAKE_C_COMPILER}"
+#     [FLAGS ...]
 #   )
 #
 # Parameters:
 #   SOURCE_DIR - path to the Snowball source tree (contains GNUmakefile)
 #   BUILD_DIR  - path to the codegen output directory
 #   COMPILER   - C compiler used to build the Snowball compiler executable
+#   FLAGS      - optional extra compiler flags (e.g. -isysroot on macOS)
 #
 # After the call, the following variables are available in the caller scope:
 #   SNOWBALL_GENERATED_SOURCES - generated/runtime/libstemmer/stemmer sources
@@ -171,6 +173,7 @@ static const char * algorithm_names[] = {
             "${SNOWBALL_GEN_BUILD_DIR}/host"
     COMMAND "${SNOWBALL_GEN_COMPILER}"
             -O2
+            ${SNOWBALL_GEN_FLAGS}
             -I "${SNOWBALL_GEN_SOURCE_DIR}/compiler"
             -o "${_snowball_compiler_exe}"
             ${_compiler_srcs}
