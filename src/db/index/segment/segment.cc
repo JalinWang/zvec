@@ -108,9 +108,20 @@ class SegmentImpl : public Segment,
   }
 
   virtual ~SegmentImpl() {
-    close();
-    if (need_destroyed_) {
-      cleanup();
+    auto s = close();
+    if (!s.ok()) {
+      LOG_ERROR("Failed to close segment[%d] during destruction: %s", id(),
+                s.message().c_str());
+    }
+    if (need_destroyed_ && !cleaned_up_) {
+      s = cleanup();
+      if (!s.ok()) {
+        LOG_WARN(
+            "Cleanup of retired segment[%d] failed during destruction: "
+            "%s; the directory will be left for cleanup on a future "
+            "read-write open",
+            id(), s.message().c_str());
+      }
     }
   }
 
@@ -412,6 +423,7 @@ class SegmentImpl : public Segment,
   mutable std::shared_mutex seg_col_mtx_;
 
   bool need_destroyed_{false};
+  bool cleaned_up_{false};
 
   // For performance tuning
   static constexpr size_t INVALID_CHUNK_LAYOUT_ID =
@@ -2348,16 +2360,32 @@ Status SegmentImpl::destroy() {
     return Status::InvalidArgument("Segment has been marked need destroyed");
   }
   need_destroyed_ = true;
+
+  // destroy() is called while the collection holds its exclusive schema lock,
+  // so no query can still be using this segment. Close mapped files and other
+  // handles before removing the directory.
+  auto s = close();
+  CHECK_RETURN_STATUS(s);
+
+  s = cleanup();
+  if (s.ok()) {
+    cleaned_up_ = true;
+  } else {
+    // Segment retirement is a logical operation; physical cleanup is
+    // best-effort and may be blocked temporarily by an external Windows file
+    // handle. Leave the directory for a later recovery cleanup rather than
+    // making a caller such as Optimize look transactionally failed.
+    LOG_WARN("Physical cleanup of retired segment[%d] was deferred: %s", id(),
+             s.message().c_str());
+  }
   return Status::OK();
 }
 
 Status SegmentImpl::cleanup() {
   auto seg_path = FileHelper::MakeSegmentPath(path_, segment_meta_->id());
   if (!FileHelper::RemoveDirectory(seg_path)) {
-    LOG_ERROR("Failed to remove destroyed segment directory: %s",
-              seg_path.c_str());
     return Status::InternalError(
-        "Failed to remove destroyed segment directory: %s", seg_path.c_str());
+        "Failed to remove destroyed segment directory: ", seg_path);
   }
   return Status::OK();
 }
