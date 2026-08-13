@@ -63,7 +63,7 @@ float MipsInnerProductSparseInSegment(uint32_t m_sparse_count,
 //! Compute the distance between matrix and query by SphericalInjection
 void MipsSquaredEuclideanDistanceMatrix<float, 1, 1>::Compute(
     const ValueType *p, const ValueType *q, size_t dim, float e2, float *out) {
-#if __ARM_NEON
+#if defined(AILEGO_HAVE_NEON)
   float u2{0.0f};
   float v2{0.0f};
   float sum = InnerProductAndSquaredNormFp32NEON(p, q, dim, &u2, &v2);
@@ -91,7 +91,7 @@ void MipsSquaredEuclideanDistanceMatrix<float, 1, 1>::Compute(
 #endif  // __SSE__
   *out = MipsEuclideanDistanceSphericalInjectionFp32Scalar(p, q, dim, e2);
   return;
-#endif  //__ARM_NEON
+#endif  // AILEGO_HAVE_NEON
 }
 
 //! Compute the distance between matrix and query by RepeatedQuadraticInjection
@@ -140,7 +140,7 @@ void MipsSquaredEuclideanDistanceMatrix<float, 1, 1>::Compute(
                                                                    e2);
 
   return;
-#endif  //__ARM_NEON
+#endif  // AILEGO_HAVE_NEON
 }
 
 // Sparse

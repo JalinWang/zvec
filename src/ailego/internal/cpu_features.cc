@@ -346,7 +346,11 @@ bool CpuFeatures::HYPERVISOR(void) {
 bool CpuFeatures::NEON(void) {
 #if defined(__aarch64__) && defined(__linux__)
   return !!(getauxval(AT_HWCAP) & HWCAP_ASIMD);
-#elif defined(__ARM_NEON)
+#elif defined(AILEGO_HAVE_NEON)
+  // NEON is part of the ARMv8 baseline, so it is unconditionally present when
+  // the target has it (including MSVC ARM64, which predefines only _M_ARM64).
+  // This must agree with Intrinsics()/version.i, which report "Neon" from the
+  // same macro.
   return true;
 #else
   return false;
