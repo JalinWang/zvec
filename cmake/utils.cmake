@@ -20,34 +20,30 @@ endfunction()
 function(apply_patch_once patch_name target_dir patch_file)
     set(mark_file "${target_dir}/.${patch_name}_patched")
 
-    if(NOT EXISTS "${patch_file}")
-        message(FATAL_ERROR "Patch file '${patch_file}' not found!")
-    endif()
-
-    # Verify the source tree instead of trusting the marker alone. This also
-    # recovers when a previous configure removed a stale marker but the patch
-    # was in fact already present.
-    execute_process(
-        COMMAND git apply --reverse --check ${ARGN}
-                --ignore-space-change --ignore-whitespace "${patch_file}"
-        WORKING_DIRECTORY "${target_dir}"
-        RESULT_VARIABLE reverse_check_result
-        OUTPUT_QUIET
-        ERROR_QUIET
-    )
-    if(reverse_check_result EQUAL 0)
-        if(NOT EXISTS "${mark_file}")
-            file(WRITE "${mark_file}" "patched")
-        endif()
-        return()
-    endif()
-
     if(EXISTS "${mark_file}")
         # A submodule update restores tracked files but leaves this untracked
-        # marker behind. Remove it before reapplying the patch.
+        # marker behind. Verify the patch is still present before trusting the
+        # marker, otherwise a normal `git pull && git submodule update` can
+        # leave an unpatched source tree that fails later during compilation.
+        execute_process(
+            COMMAND git apply --reverse --check ${ARGN}
+                    --ignore-space-change --ignore-whitespace "${patch_file}"
+            WORKING_DIRECTORY "${target_dir}"
+            RESULT_VARIABLE reverse_check_result
+            OUTPUT_QUIET
+            ERROR_QUIET
+        )
+        if(reverse_check_result EQUAL 0)
+            return()
+        endif()
+
         message(STATUS
             "Patch marker '${mark_file}' is stale; reapplying '${patch_name}'.")
         file(REMOVE "${mark_file}")
+    endif()
+
+    if(NOT EXISTS "${patch_file}")
+        message(FATAL_ERROR "Patch file '${patch_file}' not found!")
     endif()
 
     #message(STATUS "Applying patch '${patch_name}' to ${target_dir} ...")
