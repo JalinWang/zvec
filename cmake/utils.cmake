@@ -20,18 +20,40 @@ endfunction()
 function(apply_patch_once patch_name target_dir patch_file)
     set(mark_file "${target_dir}/.${patch_name}_patched")
 
-    if(EXISTS "${mark_file}")
-        #message(STATUS "Patch '${patch_name}' already applied to ${target_dir}, skipping.")
-        return()
-    endif()
-
     if(NOT EXISTS "${patch_file}")
         message(FATAL_ERROR "Patch file '${patch_file}' not found!")
     endif()
 
+    # Verify the source tree instead of trusting the marker alone. This also
+    # recovers when a previous configure removed a stale marker but the patch
+    # was in fact already present.
+    execute_process(
+        COMMAND git apply --reverse --check ${ARGN}
+                --ignore-space-change --ignore-whitespace "${patch_file}"
+        WORKING_DIRECTORY "${target_dir}"
+        RESULT_VARIABLE reverse_check_result
+        OUTPUT_QUIET
+        ERROR_QUIET
+    )
+    if(reverse_check_result EQUAL 0)
+        if(NOT EXISTS "${mark_file}")
+            file(WRITE "${mark_file}" "patched")
+        endif()
+        return()
+    endif()
+
+    if(EXISTS "${mark_file}")
+        # A submodule update restores tracked files but leaves this untracked
+        # marker behind. Remove it before reapplying the patch.
+        message(STATUS
+            "Patch marker '${mark_file}' is stale; reapplying '${patch_name}'.")
+        file(REMOVE "${mark_file}")
+    endif()
+
     #message(STATUS "Applying patch '${patch_name}' to ${target_dir} ...")
     execute_process(
-        COMMAND git apply --ignore-space-change --ignore-whitespace "${patch_file}"
+        COMMAND git apply ${ARGN} --ignore-space-change --ignore-whitespace
+                "${patch_file}"
         WORKING_DIRECTORY "${target_dir}"
         RESULT_VARIABLE patch_result
         OUTPUT_VARIABLE patch_stdout

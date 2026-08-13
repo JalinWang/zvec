@@ -15,12 +15,16 @@
 #include <cassert>
 #include <ailego/internal/cpu_features.h>
 #include <zvec/turbo/turbo.h>
+#include "avx2/pq_quantizer_int8/pq_distance.h"
 #include "avx2/rotate/fht/fht.h"
+#include "avx512/pq_quantizer_int8/pq_distance.h"
 #include "avx512/rotate/fht/fht.h"
 #include "avx512_vnni/record_quantized_int8/cosine.h"
 #include "avx512_vnni/record_quantized_int8/squared_euclidean.h"
-#include "avx512_vnni/uniform_int8/quantize.h"
-#include "avx512_vnni/uniform_int8/squared_euclidean.h"
+#include "avx512_vnni/uniform_uint7/quantize.h"
+#include "avx512_vnni/uniform_uint7/squared_euclidean.h"
+#include "avx512_vnni/uniform_uint8/squared_euclidean.h"
+#include "neon/pq_quantizer_int8/pq_distance.h"
 #include "neon/rotate/fht/fht.h"
 #include "scalar/fp16/cosine.h"
 #include "scalar/fp16/inner_product.h"
@@ -28,6 +32,7 @@
 #include "scalar/fp32/cosine.h"
 #include "scalar/fp32/inner_product.h"
 #include "scalar/fp32/squared_euclidean.h"
+#include "scalar/pq_quantizer_int8/pq_distance.h"
 #include "scalar/record_quantized_int4/cosine.h"
 #include "scalar/record_quantized_int4/inner_product.h"
 #include "scalar/record_quantized_int4/squared_euclidean.h"
@@ -120,11 +125,18 @@ constexpr KernelSet kKernelTable[] = {
      MetricType::kInnerProduct, scalar::inner_product_int4_distance,
      scalar::inner_product_int4_batch_distance, nullptr},
 
-    // --- uniform-quantized int8 (AVX512-VNNI only) ---
+    // --- uniform-quantized uint7 (stored as int8; AVX512-VNNI only) ---
     {QuantizeType::kUniform, DataType::kInt8, CpuArchType::kAVX512VNNI,
      MetricType::kSquaredEuclidean,
-     avx512_vnni::uniform_squared_euclidean_int8_distance,
-     avx512_vnni::uniform_squared_euclidean_int8_batch_distance, nullptr},
+     avx512_vnni::uniform_squared_euclidean_uint7_distance,
+     avx512_vnni::uniform_squared_euclidean_uint7_batch_distance, nullptr},
+
+    // --- uniform-quantized uint8 (AVX512-VNNI only) ---
+    {QuantizeType::kUniformUint8, DataType::kInt8, CpuArchType::kAVX512VNNI,
+     MetricType::kSquaredEuclidean,
+     avx512_vnni::uniform_squared_euclidean_uint8_distance,
+     avx512_vnni::uniform_squared_euclidean_uint8_batch_distance,
+     avx512_vnni::uniform_squared_euclidean_uint8_query_preprocess},
 
     // --- fp16 (scalar) ---
     {QuantizeType::kFp16, DataType::kFp16, CpuArchType::kScalar,
@@ -223,10 +235,36 @@ UniformQuantizeFunc get_uniform_quantize_func(DataType data_type) {
     // AVX512_VNNI flag for now since the kernel lives in the avx512_vnni
     // directory and is compiled with the same march flag.
     if (zvec::ailego::internal::CpuFeatures::static_flags_.AVX512_VNNI) {
-      return avx512_vnni::uniform_int8_quantize;
+      return avx512_vnni::uniform_uint7_quantize;
     }
   }
   return nullptr;
+}
+
+CodebookKernels get_pq_kernels(DataType data_type, QuantizeType quantize_type,
+                               CpuArchType cpu_arch_type) {
+  (void)data_type;
+  if (quantize_type == QuantizeType::kPQ) {
+    if (CpuSupports(CpuArchType::kAVX512) &&
+        IsArchMatch(cpu_arch_type, CpuArchType::kAVX512)) {
+      return {avx512::pq_adc_int8_distance_avx512,
+              avx512::pq_sdc_int8_distance_avx512,
+              avx512::pq_adc_int8_batch_distance_avx512};
+    }
+    if (CpuSupports(CpuArchType::kAVX2) &&
+        IsArchMatch(cpu_arch_type, CpuArchType::kAVX2)) {
+      return {avx2::pq_adc_int8_distance_avx2, avx2::pq_sdc_int8_distance_avx2,
+              avx2::pq_adc_int8_batch_distance_avx2};
+    }
+    if (CpuSupports(CpuArchType::kNEON) &&
+        IsArchMatch(cpu_arch_type, CpuArchType::kNEON)) {
+      return {neon::pq_adc_int8_distance_neon, neon::pq_sdc_int8_distance_neon,
+              neon::pq_adc_int8_batch_distance_neon};
+    }
+    return {scalar::pq_adc_int8_distance, scalar::pq_sdc_int8_distance,
+            scalar::pq_adc_int8_batch_distance};
+  }
+  return {};
 }
 
 RotatorKernels get_rotator_kernels(RotateType rotate_type,
@@ -253,9 +291,6 @@ RotatorKernels get_rotator_kernels(RotateType rotate_type,
     }
   }
 
-  // Unsupported RotateType: assert in debug for early detection, but always
-  // return the scalar kernels so release builds never hand back null function
-  // pointers (which would crash on the first call).
   assert(false && "unsupported RotateType");
   return {scalar::fht_rotate, scalar::fht_unrotate};
 }
