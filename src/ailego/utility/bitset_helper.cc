@@ -1839,7 +1839,7 @@ static inline size_t bitset_or_cardinality(const uint32_t *lhs,
   return count;
 }
 
-#else   // !__ARM_NEON && !AILEGO_M64
+#else   // !(AILEGO_HAVE_NEON && AILEGO_ARM64) && !AILEGO_M64
 static inline size_t bitset_cardinality(const uint32_t *lhs, size_t size) {
   const uint32_t *last = lhs + size;
   const uint32_t *last_aligned = lhs + ((size >> 2) << 2);
@@ -1964,7 +1964,7 @@ static inline size_t bitset_or_cardinality(const uint32_t *lhs,
   }
   return count;
 }
-#endif  // __ARM_NEON && __aarch64__
+#endif  // AILEGO_HAVE_NEON && AILEGO_ARM64
 
 namespace zvec {
 

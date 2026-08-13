@@ -23,11 +23,22 @@
 //   AILEGO_HAVE_NEON - NEON intrinsics available. GCC/Clang predefine
 //                      __ARM_NEON; MSVC ARM64 has NEON (ARMv8 baseline) and
 //                      predefines only _M_ARM64.
+//   AILEGO_ARM64_GNU_LIKE
+//                    - AArch64 NEON under a GCC-like compiler (GCC/Clang).
+//                      Narrower than `AILEGO_HAVE_NEON && AILEGO_ARM64`: it
+//                      excludes MSVC ARM64, which does not expose `float16_t`
+//                      or the `v*_f16` intrinsics unless built for ARMv8.2
+//                      FP16 (`/arch:armv8.2` + `_M_ARM64FP16`). Use this to
+//                      gate FP16 NEON kernels; use AILEGO_HAVE_NEON (and
+//                      AILEGO_ARM64) for FP32 kernels, which MSVC supports.
 #if defined(__aarch64__) || defined(_M_ARM64)
 #define AILEGO_ARM64 1
 #endif
 #if defined(__ARM_NEON) || defined(_M_ARM64)
 #define AILEGO_HAVE_NEON 1
+#endif
+#if defined(__ARM_NEON) && defined(__aarch64__)
+#define AILEGO_ARM64_GNU_LIKE 1
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)

@@ -72,7 +72,7 @@ void SquaredEuclideanDistanceMatrix<float, 1, 1>::Compute(const ValueType *m,
   }
 #endif  // __SSE__
   *out = SquaredEuclideanDistanceFp32Scalar(m, q, dim);
-#endif  // __ARM_NEON
+#endif  // AILEGO_HAVE_NEON
 }
 
 //-----------------------------------------------------------

@@ -59,7 +59,7 @@ float MinusInnerProductFp32NEON(const float *lhs, const float *rhs,
   return -1 * InnerProductFp32NEON(lhs, rhs, size);
 }
 
-#endif  // __ARM_NEON
+#endif  // AILEGO_HAVE_NEON
 
 }  // namespace ailego
 }  // namespace zvec

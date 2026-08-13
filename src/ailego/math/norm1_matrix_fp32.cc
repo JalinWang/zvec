@@ -78,7 +78,7 @@ void Norm1Matrix<float, 1>::Compute(const ValueType *m, size_t dim,
   NORM_FP32_1_SSE(m, dim, out, )
 #endif
 }
-#endif  // __SSE__ || (__ARM_NEON && __aarch64__)
+#endif  // __SSE__ || (AILEGO_HAVE_NEON && AILEGO_ARM64)
 
 }  // namespace ailego
 }  // namespace zvec

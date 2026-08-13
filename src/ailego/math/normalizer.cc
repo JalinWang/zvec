@@ -120,7 +120,7 @@ static inline void NormalizeNEON(float16_t *arr, size_t dim, float norm) {
 }
 #endif  // __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
 #endif  // !_MSC_VER (FP16 NEON: gcc/clang aarch64 only)
-#endif  // __ARM_NEON && __aarch64__
+#endif  // AILEGO_HAVE_NEON && AILEGO_ARM64
 
 #if defined(__AVX__)
 #if defined(__AVX512F__)
@@ -417,19 +417,18 @@ void Normalizer<float>::Compute(ValueType *arr, size_t dim, float norm) {
   }
 #endif  // __AVX__
   NormalizeSSE(arr, dim, norm);
-#endif  // __ARM_NEON
+#endif  // AILEGO_HAVE_NEON
 }
-#endif  // __SSE__ || (__ARM_NEON && __aarch64__)
+#endif  // __SSE__ || (AILEGO_HAVE_NEON && AILEGO_ARM64)
 
 // MSVC ARM64 lacks `float16_t` without ARMv8.2 FP16, so the FP16
 // `NormalizeNEON` variants are not defined there (see top of file).
 // Exclude MSVC from this specialization so MSVC ARM64 falls back to the
 // generic uint16_t-based Float16 normalize path.
-#if (defined(__F16C__) && defined(__AVX__)) || \
-    (defined(__ARM_NEON) && defined(__aarch64__))
+#if (defined(__F16C__) && defined(__AVX__)) || defined(AILEGO_ARM64_GNU_LIKE)
 //! Compute the norm of vector
 void Normalizer<Float16>::Compute(ValueType *arr, size_t dim, float norm) {
-#if defined(__ARM_NEON)
+#if defined(AILEGO_ARM64_GNU_LIKE)
   NormalizeNEON(reinterpret_cast<float16_t *>(arr), dim, norm);
 #else
 #if defined(__AVX512F__)
@@ -439,9 +438,9 @@ void Normalizer<Float16>::Compute(ValueType *arr, size_t dim, float norm) {
   }
 #endif  // __AVX512F__
   NormalizeAVX(reinterpret_cast<uint16_t *>(arr), dim, norm);
-#endif  // __ARM_NEON
+#endif  // AILEGO_ARM64_GNU_LIKE
 }
-#endif  // (__F16C__ && __AVX__) || (__ARM_NEON && __aarch64__)
+#endif  // (__F16C__ && __AVX__) || AILEGO_ARM64_GNU_LIKE
 
 }  // namespace ailego
 }  // namespace zvec

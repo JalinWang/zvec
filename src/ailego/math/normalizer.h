@@ -78,12 +78,11 @@ struct Normalizer<float> {
     }
   }
 };
-#endif  // __SSE__ || (__ARM_NEON && __aarch64__)
+#endif  // __SSE__ || (AILEGO_HAVE_NEON && AILEGO_ARM64)
 
 // MSVC ARM64 lacks `float16_t` without ARMv8.2 FP16, so the FP16 NEON
 // `Normalizer<Float16>` specialization is gated to gcc/clang aarch64.
-#if (defined(__F16C__) && defined(__AVX__)) || \
-    (defined(__ARM_NEON) && defined(__aarch64__))
+#if (defined(__F16C__) && defined(__AVX__)) || defined(AILEGO_ARM64_GNU_LIKE)
 /*! Normalizer (FP16)
  */
 template <>
@@ -110,7 +109,7 @@ struct Normalizer<Float16> {
     }
   }
 };
-#endif  // (__F16C__ && __AVX__) || (__ARM_NEON && __aarch64__)
+#endif  // (__F16C__ && __AVX__) || AILEGO_ARM64_GNU_LIKE
 
 }  // namespace ailego
 }  // namespace zvec

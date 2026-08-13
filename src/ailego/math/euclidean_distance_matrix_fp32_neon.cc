@@ -56,7 +56,7 @@ void SquaredEuclideanDistanceFp32NEON(const float *lhs, const float *rhs,
   *out = result;
 }
 
-#endif  // __ARM_NEON
+#endif  // AILEGO_HAVE_NEON
 
 }  // namespace ailego
 }  // namespace zvec

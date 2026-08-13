@@ -73,7 +73,7 @@ void InnerProductMatrix<float, 1, 1>::Compute(const float *m, const float *q,
   }
 #endif  // __SSE__
   *out = InnerProductFp32Scalar(m, q, dim);
-#endif  // __ARM_NEON
+#endif  // AILEGO_HAVE_NEON
 }
 
 //! Compute the distance between matrix and query (FP32, M=1, N=1)
@@ -104,7 +104,7 @@ void MinusInnerProductMatrix<float, 1, 1>::Compute(const float *m,
   }
 #endif  // __SSE__
   *out = MinusInnerProductFp32Scalar(m, q, dim);
-#endif  // __ARM_NEON
+#endif  // AILEGO_HAVE_NEON
 }
 
 //--------------------------------------------------
