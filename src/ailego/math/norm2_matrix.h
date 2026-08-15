@@ -371,7 +371,7 @@ struct SquaredNorm2Matrix<uint8_t, M, typename std::enable_if<M >= 2>::type> {
   }
 };
 
-#if defined(__SSE__) || (defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64))
+#if defined(__SSE__) || defined(AILEGO_ARM64_NEON)
 /*! L2-Norm Matrix (FP32, M=1)
  */
 template <>
@@ -393,7 +393,7 @@ struct SquaredNorm2Matrix<float, 1> {
   //! Compute the squared L2-norm of vectors
   static void Compute(const ValueType *m, size_t dim, float *out);
 };
-#endif  // __SSE__ || (AILEGO_HAVE_NEON && AILEGO_ARM64)
+#endif  // __SSE__ || AILEGO_ARM64_NEON
 
 // MSVC ARM64 lacks `float16_t` without ARMv8.2 FP16; gate FP16 NEON
 // specialization to gcc/clang aarch64.

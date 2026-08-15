@@ -14,7 +14,7 @@
 
 #include "fht.h"
 #include <zvec/ailego/internal/platform.h>
-#if defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64)
+#if defined(AILEGO_ARM64_NEON)
 #include <arm_neon.h>
 #endif
 #include <cmath>
@@ -27,7 +27,7 @@
 namespace zvec::turbo::neon {
 
 void fht_flip_sign_neon(const uint8_t *flip, float *data, size_t dim) {
-#if defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64)
+#if defined(AILEGO_ARM64_NEON)
   const uint32x4_t sign_bit = vdupq_n_u32(0x80000000u);
   size_t simd_end = dim & ~3u;
   size_t flip_bytes = (dim + 7) / 8;
@@ -65,7 +65,7 @@ void fht_flip_sign_neon(const uint8_t *flip, float *data, size_t dim) {
 }
 
 void fht_kacs_walk_neon(float *data, size_t len) {
-#if defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64)
+#if defined(AILEGO_ARM64_NEON)
   size_t half = len / 2;
   size_t base = len % 2;
   size_t offset = base + half;
@@ -92,7 +92,7 @@ void fht_kacs_walk_neon(float *data, size_t len) {
 }
 
 void fht_inv_kacs_walk_neon(float *data, size_t len) {
-#if defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64)
+#if defined(AILEGO_ARM64_NEON)
   size_t half = len / 2;
   size_t base = len % 2;
   size_t offset = base + half;
@@ -120,7 +120,7 @@ void fht_inv_kacs_walk_neon(float *data, size_t len) {
 }
 
 void fht_vec_rescale_neon(float *data, size_t n, float factor) {
-#if defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64)
+#if defined(AILEGO_ARM64_NEON)
   const float32x4_t fac = vdupq_n_f32(factor);
   size_t simd_end = n & ~3u;
   for (size_t i = 0; i < simd_end; i += 4) {
@@ -136,9 +136,9 @@ void fht_vec_rescale_neon(float *data, size_t n, float factor) {
 #endif
 }
 
-void fht_rotate_neon(const float *in, float *out, size_t in_dim,
-                     size_t out_dim, void *ctx) {
-#if defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64)
+void fht_rotate_neon(const float *in, float *out, size_t in_dim, size_t out_dim,
+                     void *ctx) {
+#if defined(AILEGO_ARM64_NEON)
   (void)out_dim;
   static constexpr FhtPrimitives kPrim = {
       fht_flip_sign_neon, scalar::fht_inplace, fht_kacs_walk_neon,
@@ -155,7 +155,7 @@ void fht_rotate_neon(const float *in, float *out, size_t in_dim,
 
 void fht_unrotate_neon(const float *in, float *out, size_t in_dim,
                        size_t out_dim, void *ctx) {
-#if defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64)
+#if defined(AILEGO_ARM64_NEON)
   (void)out_dim;
   static constexpr FhtPrimitives kPrim = {
       fht_flip_sign_neon, scalar::fht_inplace, fht_kacs_walk_neon,

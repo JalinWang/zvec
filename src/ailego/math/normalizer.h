@@ -51,7 +51,7 @@ struct Normalizer {
   }
 };
 
-#if defined(__SSE__) || (defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64))
+#if defined(__SSE__) || defined(AILEGO_ARM64_NEON)
 /*! Normalizer (FP32)
  */
 template <>
@@ -78,7 +78,7 @@ struct Normalizer<float> {
     }
   }
 };
-#endif  // __SSE__ || (AILEGO_HAVE_NEON && AILEGO_ARM64)
+#endif  // __SSE__ || AILEGO_ARM64_NEON
 
 // MSVC ARM64 lacks `float16_t` without ARMv8.2 FP16, so the FP16 NEON
 // `Normalizer<Float16>` specialization is gated to gcc/clang aarch64.

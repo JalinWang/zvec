@@ -14,7 +14,7 @@
 
 #include <zvec/ailego/internal/platform.h>
 
-#if defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64)
+#if defined(AILEGO_ARM64_NEON)
 
 #include <cmath>
 #include <cstddef>
@@ -109,4 +109,4 @@ void fht_inv_kacs_walk_neon(float *data, size_t len) {
 }  // namespace ailego
 }  // namespace zvec
 
-#endif  // AILEGO_HAVE_NEON && AILEGO_ARM64
+#endif  // AILEGO_ARM64_NEON

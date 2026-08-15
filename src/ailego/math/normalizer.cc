@@ -17,7 +17,7 @@
 namespace zvec {
 namespace ailego {
 
-#if (defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64))
+#if defined(AILEGO_ARM64_NEON)
 static inline void NormalizeNEON(float *arr, size_t dim, float norm) {
   float *last = arr + dim;
   float *last_aligned = arr + ((dim >> 3) << 3);
@@ -120,7 +120,7 @@ static inline void NormalizeNEON(float16_t *arr, size_t dim, float norm) {
 }
 #endif  // __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
 #endif  // !_MSC_VER (FP16 NEON: gcc/clang aarch64 only)
-#endif  // AILEGO_HAVE_NEON && AILEGO_ARM64
+#endif  // AILEGO_ARM64_NEON
 
 #if defined(__AVX__)
 #if defined(__AVX512F__)
@@ -398,7 +398,7 @@ static inline void NormalizeSSE(float *arr, size_t dim, float norm) {
 }
 #endif  // __SSE__
 
-#if defined(__SSE__) || (defined(AILEGO_HAVE_NEON) && defined(AILEGO_ARM64))
+#if defined(__SSE__) || defined(AILEGO_ARM64_NEON)
 //! Compute the norm of vector
 void Normalizer<float>::Compute(ValueType *arr, size_t dim, float norm) {
 #if defined(AILEGO_HAVE_NEON)
@@ -419,7 +419,7 @@ void Normalizer<float>::Compute(ValueType *arr, size_t dim, float norm) {
   NormalizeSSE(arr, dim, norm);
 #endif  // AILEGO_HAVE_NEON
 }
-#endif  // __SSE__ || (AILEGO_HAVE_NEON && AILEGO_ARM64)
+#endif  // __SSE__ || AILEGO_ARM64_NEON
 
 // MSVC ARM64 lacks `float16_t` without ARMv8.2 FP16, so the FP16
 // `NormalizeNEON` variants are not defined there (see top of file).
