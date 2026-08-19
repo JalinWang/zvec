@@ -1,0 +1,10 @@
+# Prepared Cohere10M shards and ground truth are generated locally.
+data/*
+!data/README.md
+
+# Runs contain large logs, metrics, and collection artifacts.
+runs/*
+!runs/README.md
+
+# Local rendered reports are reproducible from retained run data.
+reports/
