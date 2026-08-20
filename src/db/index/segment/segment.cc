@@ -113,7 +113,7 @@ class SegmentImpl : public Segment,
       LOG_ERROR("Failed to close segment[%d] during destruction: %s", id(),
                 s.message().c_str());
     }
-    if (need_destroyed_ && !cleaned_up_) {
+    if (need_destroyed_) {
       s = cleanup();
       if (!s.ok()) {
         LOG_WARN(
@@ -423,7 +423,6 @@ class SegmentImpl : public Segment,
   mutable std::shared_mutex seg_col_mtx_;
 
   bool need_destroyed_{false};
-  bool cleaned_up_{false};
 
   // For performance tuning
   static constexpr size_t INVALID_CHUNK_LAYOUT_ID =
@@ -2361,23 +2360,11 @@ Status SegmentImpl::destroy() {
   }
   need_destroyed_ = true;
 
-  // destroy() is called while the collection holds its exclusive schema lock,
-  // so no query can still be using this segment. Close mapped files and other
-  // handles before removing the directory.
+  // destroy() may be called while the collection holds its exclusive schema
+  // lock. Release mapped files and other handles here, but defer recursive
+  // directory removal until the final reference is released outside the lock.
   auto s = close();
   CHECK_RETURN_STATUS(s);
-
-  s = cleanup();
-  if (s.ok()) {
-    cleaned_up_ = true;
-  } else {
-    // Segment retirement is a logical operation; physical cleanup is
-    // best-effort and may be blocked temporarily by an external Windows file
-    // handle. Leave the directory for a later recovery cleanup rather than
-    // making a caller such as Optimize look transactionally failed.
-    LOG_WARN("Physical cleanup of retired segment[%d] was deferred: %s", id(),
-             s.message().c_str());
-  }
   return Status::OK();
 }
 
@@ -2385,7 +2372,8 @@ Status SegmentImpl::cleanup() {
   auto seg_path = FileHelper::MakeSegmentPath(path_, segment_meta_->id());
   if (!FileHelper::RemoveDirectory(seg_path)) {
     return Status::InternalError(
-        "Failed to remove destroyed segment directory: ", seg_path);
+        "Failed to remove destroyed segment directory: ", seg_path,
+        ", error: ", ailego::FileHelper::GetLastErrorString());
   }
   return Status::OK();
 }
