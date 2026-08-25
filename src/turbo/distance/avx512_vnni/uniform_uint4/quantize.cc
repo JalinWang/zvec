@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "avx512_vnni/uniform_uint4/quantize.h"
+
+#if defined(__AVX512F__) || (defined(_MSC_VER) && defined(__AVX512F__))
 #include <immintrin.h>
 #include <algorithm>
 #include <cstring>
@@ -48,3 +50,15 @@ void uniform_uint4_quantize(const float *input, std::size_t dimension,
 }
 
 }  // namespace zvec::turbo::avx512_vnni
+
+#else  // no AVX-512 support
+
+namespace zvec::turbo::avx512_vnni {
+
+void uniform_uint4_quantize(const float * /*input*/, std::size_t /*dimension*/,
+                            float /*minimum*/, float /*range*/,
+                            std::uint8_t * /*output*/) {}
+
+}  // namespace zvec::turbo::avx512_vnni
+
+#endif

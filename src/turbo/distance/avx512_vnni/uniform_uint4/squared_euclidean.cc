@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "avx512_vnni/uniform_uint4/squared_euclidean.h"
+#include "zvec/ailego/internal/platform.h"
+
+#if defined(__AVX512VNNI__) || (defined(_MSC_VER) && defined(__AVX512F__))
 #include <immintrin.h>
 #include <cstdint>
-#include "zvec/ailego/internal/platform.h"
 
 namespace zvec::turbo::avx512_vnni {
 namespace {
@@ -107,3 +109,20 @@ void uniform_squared_euclidean_uint4_batch_distance(const void *const *vectors,
 }
 
 }  // namespace zvec::turbo::avx512_vnni
+
+#else  // no AVX512-VNNI support
+
+namespace zvec::turbo::avx512_vnni {
+
+void uniform_squared_euclidean_uint4_distance(const void * /*lhs*/,
+                                              const void * /*rhs*/,
+                                              size_t /*encoded_dimension*/,
+                                              float * /*distance*/) {}
+
+void uniform_squared_euclidean_uint4_batch_distance(
+    const void *const * /*vectors*/, const void * /*query*/, size_t /*count*/,
+    size_t /*encoded_dimension*/, float * /*distances*/) {}
+
+}  // namespace zvec::turbo::avx512_vnni
+
+#endif

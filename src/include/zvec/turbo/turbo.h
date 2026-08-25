@@ -152,7 +152,6 @@ enum class DataType {
   kUnknown,
   kUint4,
   kUint7,
-  kUint8
 };
 
 enum class QuantizeType {
