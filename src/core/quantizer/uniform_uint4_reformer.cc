@@ -72,7 +72,7 @@ class UniformUint4Reformer : public IndexReformer {
     const float step = range_ / 15.0f;
     distance_scale_ = step * step;
     quantize_func_ =
-        turbo::get_uniform_uint4_quantize_func(turbo::DataType::kInt4);
+        turbo::get_uniform_uint4_quantize_func(turbo::DataType::kUint4);
     initialized_ = true;
     return 0;
   }

@@ -492,7 +492,7 @@ QueryPreprocessFunc get_query_preprocess_func(MetricType metric_type,
 }
 
 UniformQuantizeFunc get_uniform_quantize_func(DataType data_type) {
-  if (data_type == DataType::kInt8) {
+  if (data_type == DataType::kUint7) {
     // Quantize uses AVX-512F (no VNNI required), but we gate on the same
     // AVX512_VNNI flag for now since the kernel lives in the avx512_vnni
     // directory and is compiled with the same march flag.
@@ -504,7 +504,9 @@ UniformQuantizeFunc get_uniform_quantize_func(DataType data_type) {
 }
 
 UniformUint4QuantizeFunc get_uniform_uint4_quantize_func(DataType data_type) {
-  if (data_type == DataType::kInt4 &&
+  // TODO: unify uniform_uint4_quantize/uniform_uint4_quantize param list and
+  // merge get_uniform_quantize_func/get_uniform_uint4_quantize_func
+  if (data_type == DataType::kUint4 &&
       zvec::ailego::internal::CpuFeatures::static_flags_.AVX512_VNNI) {
     return avx512_vnni::uniform_uint4_quantize;
   }

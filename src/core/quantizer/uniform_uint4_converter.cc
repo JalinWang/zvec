@@ -364,7 +364,8 @@ class UniformUint4Converter : public IndexConverter {
           minimum_(minimum),
           range_(range),
           quantize_func_(
-              turbo::get_uniform_uint4_quantize_func(turbo::DataType::kInt4)) {}
+              turbo::get_uniform_uint4_quantize_func(turbo::DataType::kUint4)) {
+    }
 
     size_t count(void) const override {
       return front_->count();

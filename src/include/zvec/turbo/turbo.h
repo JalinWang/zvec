@@ -150,6 +150,9 @@ enum class DataType {
   kFp32,
   kUint8,
   kUnknown,
+  kUint4,
+  kUint7,
+  kUint8
 };
 
 enum class QuantizeType {

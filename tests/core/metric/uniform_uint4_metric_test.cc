@@ -73,7 +73,7 @@ TEST(UniformUint4Metric, PairAndBatchMatchScalarExactly) {
 
 TEST(UniformUint4Metric, QuantizeMatchesReimplPackingAndPadding) {
   auto quantize =
-      turbo::get_uniform_uint4_quantize_func(turbo::DataType::kInt4);
+      turbo::get_uniform_uint4_quantize_func(turbo::DataType::kUint4);
   if (!quantize) GTEST_SKIP() << "AVX-512 VNNI is unavailable";
 
   constexpr size_t dimension = 131;
