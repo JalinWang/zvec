@@ -339,6 +339,8 @@ TEST(IndexInterface, ReopenRestoresUniformReformer) {
        "test_uniform_uint7_reopen.index"},
       {QuantizerType::kUniformUint8, "UniformUint8Converter",
        "test_uniform_uint8_reopen.index"},
+      {QuantizerType::kUniformUint4, "UniformUint4Converter",
+       "test_uniform_uint4_reopen.index"},
   };
 
   for (const auto &test_case : test_cases) {
