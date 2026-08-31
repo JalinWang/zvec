@@ -3,7 +3,7 @@
 
 #include "avx512_vnni/uniform_uint4/quantize.h"
 
-#if defined(__AVX512F__) || (defined(_MSC_VER) && defined(__AVX512F__))
+#if defined(__AVX512F__)
 #include <immintrin.h>
 #include <algorithm>
 #include <cstring>

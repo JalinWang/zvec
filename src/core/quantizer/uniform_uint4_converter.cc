@@ -23,6 +23,7 @@
 #include <ailego/pattern/defer.h>
 #include <core/quantizer/quantizer_params.h>
 #include <zvec/core/framework/index_factory.h>
+#include <zvec/core/interface/index_param.h>
 #include <zvec/turbo/turbo.h>
 #include "../metric/metric_params.h"
 
@@ -118,12 +119,17 @@ class UniformUint4Converter : public IndexConverter {
   ~UniformUint4Converter() override = default;
 
   int init(const IndexMeta &index_meta, const ailego::Params &params) override {
-    if (index_meta.data_type() != IndexMeta::DataType::DT_FP32 ||
-        index_meta.dimension() == 0) {
+    if (index_meta.data_type() != IndexMeta::DataType::DT_FP32) {
       return IndexError_Unsupported;
     }
+    const size_t dimension = index_meta.dimension();
+    if (dimension == 0 || dimension > MAX_DIMENSION) {
+      LOG_ERROR("UniformUint4Converter: dimension=%zu must be in [1, %d]",
+                dimension, MAX_DIMENSION);
+      return IndexError_InvalidArgument;
+    }
     meta_ = index_meta;
-    original_dimension_ = index_meta.dimension();
+    original_dimension_ = dimension;
     encoded_dimension_ = PaddedDimension(original_dimension_) / 2U;
     *stats_.mutable_trained_count() = 0;
     *stats_.mutable_transformed_count() = 0;

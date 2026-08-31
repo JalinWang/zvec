@@ -19,6 +19,7 @@
 #include <vector>
 #include <core/quantizer/quantizer_params.h>
 #include <zvec/core/framework/index_factory.h>
+#include <zvec/core/interface/index_param.h>
 #include <zvec/turbo/turbo.h>
 
 namespace zvec {
@@ -63,7 +64,8 @@ class UniformUint4Reformer : public IndexReformer {
         UNIFORM_UINT4_REFORMER_ORIGINAL_DIMENSION, &original_dimension);
     if (!has_minimum || !has_range || !has_dimension ||
         !std::isfinite(minimum_) || !std::isfinite(range_) ||
-        !(range_ > 0.0f) || original_dimension == 0) {
+        !(range_ > 0.0f) || original_dimension == 0 ||
+        original_dimension > MAX_DIMENSION) {
       LOG_ERROR("UniformUint4Reformer: invalid or missing params");
       return IndexError_InvalidArgument;
     }
@@ -165,14 +167,9 @@ class UniformUint4Reformer : public IndexReformer {
       const float *row = nullptr;
       if (is_fp32) {
         row = static_cast<const float *>(source_row);
-      } else if (source_type == IndexMeta::DataType::DT_FP16) {
-        const auto *input = static_cast<const ailego::Float16 *>(source_row);
-        for (size_t d = 0; d < original_dimension_; ++d) {
-          decoded[d] = static_cast<float>(input[d]);
-        }
-        row = decoded.data();
       } else {
-        const auto *input = static_cast<const uint8_t *>(source_row);
+        // fp16
+        const auto *input = static_cast<const ailego::Float16 *>(source_row);
         for (size_t d = 0; d < original_dimension_; ++d) {
           decoded[d] = static_cast<float>(input[d]);
         }

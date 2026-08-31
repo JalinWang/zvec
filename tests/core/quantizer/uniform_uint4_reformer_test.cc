@@ -10,6 +10,7 @@
 #include <zvec/ailego/container/vector.h>
 #include <zvec/core/framework/index_factory.h>
 #include <zvec/core/framework/index_holder.h>
+#include <zvec/core/interface/index_param.h>
 #include "quantizer/quantizer_params.h"
 
 namespace zvec::core {
@@ -28,6 +29,35 @@ std::vector<uint8_t> ScalarEncode(const float *input, size_t dimension,
     output[d >> 1U] |= static_cast<uint8_t>(code << (4U * (d & 1U)));
   }
   return output;
+}
+
+TEST(UniformUint4Converter, ValidatesSourceTypeAndDimension) {
+  auto converter = IndexFactory::CreateConverter("UniformUint4Converter");
+  ASSERT_NE(nullptr, converter);
+
+  IndexMeta unsupported(IndexMeta::DataType::DT_FP16, 1);
+  EXPECT_EQ(IndexError_Unsupported,
+            converter->init(unsupported, ailego::Params()));
+
+  IndexMeta zero_dimension(IndexMeta::DataType::DT_FP32, 0);
+  EXPECT_EQ(IndexError_InvalidArgument,
+            converter->init(zero_dimension, ailego::Params()));
+
+  IndexMeta oversized(IndexMeta::DataType::DT_FP32, MAX_DIMENSION + 1U);
+  EXPECT_EQ(IndexError_InvalidArgument,
+            converter->init(oversized, ailego::Params()));
+}
+
+TEST(UniformUint4Reformer, RejectsOversizedPersistedDimension) {
+  ailego::Params params;
+  params.set(UNIFORM_UINT4_REFORMER_MINIMUM, 0.0f);
+  params.set(UNIFORM_UINT4_REFORMER_RANGE, 1.0f);
+  params.set(UNIFORM_UINT4_REFORMER_ORIGINAL_DIMENSION,
+             static_cast<uint32_t>(MAX_DIMENSION + 1U));
+
+  auto reformer = IndexFactory::CreateReformer("UniformUint4Reformer");
+  ASSERT_NE(nullptr, reformer);
+  EXPECT_EQ(IndexError_InvalidArgument, reformer->init(params));
 }
 
 TEST(UniformUint4Reformer, ExactClippedCalibrationPackingAndPersistence) {
