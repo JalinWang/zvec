@@ -127,7 +127,7 @@ TEST(UniformUint4Reformer, ExactClippedCalibrationPackingAndPersistence) {
             transformed);
 }
 
-TEST(UniformUint4Reformer, BuildsDirectlyFromNativeFp16Holder) {
+TEST(UniformUint4Reformer, AcceptsFp16ForTransformAndConvert) {
   constexpr size_t dimension = 3;
 
   IndexMeta meta;
@@ -169,12 +169,20 @@ TEST(UniformUint4Reformer, BuildsDirectlyFromNativeFp16Holder) {
   ASSERT_NE(nullptr, reformer);
   ASSERT_EQ(0, reformer->init(converter->meta().reformer_params()));
   auto native_iter = holder->create_iterator();
+  const IndexQueryMeta fp16_meta(IndexMeta::DataType::DT_FP16, dimension);
+
+  std::string transformed;
+  IndexQueryMeta transformed_meta;
+  ASSERT_EQ(0, reformer->transform(native_iter->data(), fp16_meta, &transformed,
+                                   &transformed_meta));
+  EXPECT_EQ(std::string(reinterpret_cast<const char *>(expected.data()),
+                        expected.size()),
+            transformed);
+
   std::string converted;
   IndexQueryMeta converted_meta;
-  ASSERT_EQ(0, reformer->convert(
-                   native_iter->data(),
-                   IndexQueryMeta(IndexMeta::DataType::DT_FP16, dimension),
-                   &converted, &converted_meta));
+  ASSERT_EQ(0, reformer->convert(native_iter->data(), fp16_meta, &converted,
+                                 &converted_meta));
   EXPECT_EQ(std::string(reinterpret_cast<const char *>(expected.data()),
                         expected.size()),
             converted);

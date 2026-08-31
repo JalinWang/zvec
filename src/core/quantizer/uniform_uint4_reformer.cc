@@ -92,19 +92,19 @@ class UniformUint4Reformer : public IndexReformer {
 
   int transform(const void *query, const IndexQueryMeta &qmeta,
                 std::string *out, IndexQueryMeta *ometa) const override {
-    return Quantize(query, qmeta, 1, false, out, ometa);
+    return Quantize(query, qmeta, 1, out, ometa);
   }
   int transform(const void *query, const IndexQueryMeta &qmeta, uint32_t count,
                 std::string *out, IndexQueryMeta *ometa) const override {
-    return Quantize(query, qmeta, count, false, out, ometa);
+    return Quantize(query, qmeta, count, out, ometa);
   }
   int convert(const void *record, const IndexQueryMeta &rmeta, std::string *out,
               IndexQueryMeta *ometa) const override {
-    return Quantize(record, rmeta, 1, true, out, ometa);
+    return Quantize(record, rmeta, 1, out, ometa);
   }
   int convert(const void *records, const IndexQueryMeta &rmeta, uint32_t count,
               std::string *out, IndexQueryMeta *ometa) const override {
-    return Quantize(records, rmeta, count, true, out, ometa);
+    return Quantize(records, rmeta, count, out, ometa);
   }
 
   int normalize(const void * /*query*/, const IndexQueryMeta & /*qmeta*/,
@@ -141,14 +141,13 @@ class UniformUint4Reformer : public IndexReformer {
 
  private:
   int Quantize(const void *source, const IndexQueryMeta &source_meta,
-               uint32_t count, bool accept_native_flat, std::string *out,
+               uint32_t count, std::string *out,
                IndexQueryMeta *output_meta) const {
     if (!initialized_) return IndexError_Runtime;
     const auto source_type = source_meta.data_type();
     const bool is_fp32 = source_type == IndexMeta::DataType::DT_FP32;
-    const bool is_native_flat =
-        accept_native_flat && source_type == IndexMeta::DataType::DT_FP16;
-    if (!source || !out || !output_meta || (!is_fp32 && !is_native_flat) ||
+    const bool is_fp16 = source_type == IndexMeta::DataType::DT_FP16;
+    if (!source || !out || !output_meta || (!is_fp32 && !is_fp16) ||
         source_meta.dimension() != original_dimension_) {
       return IndexError_Mismatch;
     }
