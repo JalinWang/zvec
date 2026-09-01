@@ -169,7 +169,7 @@ enum class QuantizeType {
   // physical representation. Used for kernel dispatch; no serialized
   // quantizer payload is required.
   kRaw = 8,
-  kPQFast = 9,  // 4-bit PQ with FastScan (packed codes + SIMD)
+  kPQFast = 9,         // 4-bit PQ with FastScan (packed codes + SIMD)
   kUniformUint4 = 10,  // Uniform uint4: two packed codes per byte.
 };
 
