@@ -13,9 +13,10 @@
 // limitations under the License.
 
 #include "neon/fp16/inner_product.h"
-#include "common/fp16_common.h"
+#include <zvec/ailego/internal/platform.h>
 
-#if defined(__ARM_NEON) && defined(__aarch64__)
+// MSVC may lack of fp16 support, fallback to scalar for now
+#if defined(AILEGO_ARM64_GNU_LIKE)
 #include <arm_neon.h>
 #else
 #include "scalar/fp16/inner_product.h"
@@ -25,27 +26,12 @@ namespace zvec::turbo::neon {
 
 void inner_product_fp16_distance(const void *a, const void *b, size_t dim,
                                  float *distance) {
-#if defined(__ARM_NEON) && defined(__aarch64__)
+#if defined(AILEGO_ARM64_GNU_LIKE)
   const float16_t *lhs = reinterpret_cast<const float16_t *>(a);
   const float16_t *rhs = reinterpret_cast<const float16_t *>(b);
   const float16_t *last = lhs + dim;
   const float16_t *last_aligned = lhs + ((dim >> 3) << 3);
 
-#if ZVEC_TURBO_FP16_NEON
-  float16x8_t sum = vdupq_n_f16(0.0f);
-  for (; lhs != last_aligned; lhs += 8, rhs += 8) {
-    sum = vfmaq_f16(sum, vld1q_f16(lhs), vld1q_f16(rhs));
-  }
-  if (last - lhs >= 4) {
-    const float16x8_t lhs4 = vcombine_f16(vld1_f16(lhs), vdup_n_f16(0.0f));
-    const float16x8_t rhs4 = vcombine_f16(vld1_f16(rhs), vdup_n_f16(0.0f));
-    sum = vfmaq_f16(sum, lhs4, rhs4);
-    lhs += 4;
-    rhs += 4;
-  }
-  float result = vaddvq_f32(
-      vaddq_f32(vcvt_f32_f16(vget_low_f16(sum)), vcvt_high_f32_f16(sum)));
-#else
   float32x4_t sum0 = vdupq_n_f32(0.0f);
   float32x4_t sum1 = vdupq_n_f32(0.0f);
   for (; lhs != last_aligned; lhs += 8, rhs += 8) {
@@ -62,7 +48,6 @@ void inner_product_fp16_distance(const void *a, const void *b, size_t dim,
     rhs += 4;
   }
   float result = vaddvq_f32(vaddq_f32(sum0, sum1));
-#endif
 
   for (; lhs != last; ++lhs, ++rhs) {
     result += static_cast<float>(*lhs) * static_cast<float>(*rhs);

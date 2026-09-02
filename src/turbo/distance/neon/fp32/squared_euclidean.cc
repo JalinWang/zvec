@@ -13,8 +13,9 @@
 // limitations under the License.
 
 #include "neon/fp32/squared_euclidean.h"
+#include <zvec/ailego/internal/platform.h>
 
-#if defined(__ARM_NEON) && defined(__aarch64__)
+#if defined(AILEGO_ARM64_NEON)
 #include <arm_neon.h>
 #else
 #include "scalar/fp32/squared_euclidean.h"
@@ -24,7 +25,7 @@ namespace zvec::turbo::neon {
 
 void squared_euclidean_fp32_distance(const void *a, const void *b, size_t dim,
                                      float *distance) {
-#if defined(__ARM_NEON) && defined(__aarch64__)
+#if defined(AILEGO_ARM64_NEON)
   const float *lhs = reinterpret_cast<const float *>(a);
   const float *rhs = reinterpret_cast<const float *>(b);
   const float *last = lhs + dim;

@@ -16,8 +16,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <zvec/ailego/internal/platform.h>
 
-#if defined(__ARM_NEON) && defined(__aarch64__)
+#if defined(AILEGO_ARM64_NEON)
 #include <arm_neon.h>
 #else
 #include "../../scalar/record_quantized_int8/common.h"
@@ -25,7 +26,7 @@
 
 namespace zvec::turbo::neon::internal {
 
-#if defined(__ARM_NEON) && defined(__aarch64__)
+#if defined(AILEGO_ARM64_NEON)
 inline int64x2_t accumulate_int8_products(int64x2_t sum, int8x16_t lhs,
                                           int8x16_t rhs) {
   const int16x8_t product_low = vmull_s8(vget_low_s8(lhs), vget_low_s8(rhs));
@@ -36,7 +37,7 @@ inline int64x2_t accumulate_int8_products(int64x2_t sum, int8x16_t lhs,
 #endif
 
 inline float ip_int8_neon(const void *a, const void *b, size_t size) {
-#if defined(__ARM_NEON) && defined(__aarch64__)
+#if defined(AILEGO_ARM64_NEON)
   const int8_t *lhs = reinterpret_cast<const int8_t *>(a);
   const int8_t *rhs = reinterpret_cast<const int8_t *>(b);
   const size_t aligned_size = (size >> 4) << 4;

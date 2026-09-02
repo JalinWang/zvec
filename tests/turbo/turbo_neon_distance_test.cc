@@ -15,6 +15,7 @@
 #include <array>
 #include <vector>
 #include <gtest/gtest.h>
+#include <zvec/ailego/internal/platform.h>
 #include <zvec/ailego/utility/float_helper.h>
 #include <zvec/turbo/turbo.h>
 #include "distance/neon/fp16/cosine.h"
@@ -50,7 +51,7 @@ void CompareDistance(RawDistanceFn expected_fn, RawDistanceFn actual_fn,
 }
 
 TEST(NeonDistance, Fp32MatchesScalarForRemainders) {
-#if !defined(__ARM_NEON) || !defined(__aarch64__)
+#if !defined(AILEGO_ARM64_NEON)
   GTEST_SKIP() << "NEON distance kernels require AArch64";
 #else
   std::vector<float> a(33);
@@ -74,8 +75,8 @@ TEST(NeonDistance, Fp32MatchesScalarForRemainders) {
 }
 
 TEST(NeonDistance, Fp16MatchesScalarForRemainders) {
-#if !defined(__ARM_NEON) || !defined(__aarch64__)
-  GTEST_SKIP() << "NEON distance kernels require AArch64";
+#if !defined(AILEGO_ARM64_GNU_LIKE)
+  GTEST_SKIP() << "FP16 NEON distance kernels require GNU-like AArch64";
 #else
   std::vector<float> a_fp32(33);
   std::vector<float> b_fp32(33);
@@ -101,8 +102,32 @@ TEST(NeonDistance, Fp16MatchesScalarForRemainders) {
 #endif
 }
 
+TEST(NeonDistance, Fp16AccumulatesInFp32) {
+#if !defined(AILEGO_ARM64_GNU_LIKE)
+  GTEST_SKIP() << "FP16 NEON distance kernels require GNU-like AArch64";
+#else
+  constexpr size_t dim = 8;
+  std::vector<float> a_fp32(dim, 256.0f);
+  std::vector<float> b_fp32(dim, 256.0f);
+  std::vector<float> zero_fp32(dim, 0.0f);
+  std::vector<uint16_t> a(dim);
+  std::vector<uint16_t> b(dim);
+  std::vector<uint16_t> zero(dim);
+  ailego::FloatHelper::ToFP16(a_fp32.data(), dim, a.data());
+  ailego::FloatHelper::ToFP16(b_fp32.data(), dim, b.data());
+  ailego::FloatHelper::ToFP16(zero_fp32.data(), dim, zero.data());
+
+  CompareDistance(scalar::inner_product_fp16_distance,
+                  neon::inner_product_fp16_distance, a.data(), b.data(), dim,
+                  0.0f);
+  CompareDistance(scalar::squared_euclidean_fp16_distance,
+                  neon::squared_euclidean_fp16_distance, a.data(), zero.data(),
+                  dim, 0.0f);
+#endif
+}
+
 TEST(NeonDistance, RecordIntegerProductsMatchScalarForRemainders) {
-#if !defined(__ARM_NEON) || !defined(__aarch64__)
+#if !defined(AILEGO_ARM64_NEON)
   GTEST_SKIP() << "NEON distance kernels require AArch64";
 #else
   std::vector<int8_t> int8_a(97);
@@ -132,7 +157,7 @@ TEST(NeonDistance, RecordIntegerProductsMatchScalarForRemainders) {
 }
 
 TEST(NeonDistance, DispatchProvidesAllKernels) {
-#if !defined(__ARM_NEON) || !defined(__aarch64__)
+#if !defined(AILEGO_ARM64_NEON)
   GTEST_SKIP() << "NEON distance kernels require AArch64";
 #else
   constexpr std::array<MetricType, 3> metrics = {MetricType::kSquaredEuclidean,

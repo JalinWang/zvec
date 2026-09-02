@@ -16,15 +16,16 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <zvec/ailego/internal/platform.h>
 #include "../record_quantized_int8/common.h"
-#if !defined(__ARM_NEON) || !defined(__aarch64__)
+#if !defined(AILEGO_ARM64_NEON)
 #include "../../scalar/record_quantized_int4/common.h"
 #endif
 
 namespace zvec::turbo::neon::internal {
 
 inline float ip_int4_neon(const void *a, const void *b, size_t size) {
-#if defined(__ARM_NEON) && defined(__aarch64__)
+#if defined(AILEGO_ARM64_NEON)
   const uint8_t *lhs = reinterpret_cast<const uint8_t *>(a);
   const uint8_t *rhs = reinterpret_cast<const uint8_t *>(b);
   const size_t byte_size = size >> 1;
