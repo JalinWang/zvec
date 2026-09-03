@@ -304,9 +304,9 @@ constexpr KernelSet kKernelTable[] = {
 
     // --- uniform-quantized uint4 (packed; AVX512-VNNI only) ---
     {QuantizeType::kUniformUint4, DataType::kInt4, CpuArchType::kAVX512VNNI,
-    MetricType::kSquaredEuclidean,
-    avx512_vnni::uniform_squared_euclidean_uint4_distance,
-    avx512_vnni::uniform_squared_euclidean_uint4_batch_distance, nullptr},
+     MetricType::kSquaredEuclidean,
+     avx512_vnni::uniform_squared_euclidean_uint4_distance,
+     avx512_vnni::uniform_squared_euclidean_uint4_batch_distance, nullptr},
 
     // --- fp16 (AVX512-FP16, AVX512, AVX2, NEON, scalar) ---
     {QuantizeType::kFp16, DataType::kFp16, CpuArchType::kAVX512FP16,
