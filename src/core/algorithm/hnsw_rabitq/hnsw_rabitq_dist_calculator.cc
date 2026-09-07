@@ -20,6 +20,7 @@ namespace zvec::core {
 int HnswRabitqAddDistCalculator::get_vector(
     const node_id_t *ids, uint32_t count,
     std::vector<IndexStorage::MemoryBlock> &vec_blocks) const {
+  vec_blocks.reserve(vec_blocks.size() + count);
   for (uint32_t i = 0; i < count; ++i) {
     const node_id_t id = ids[i];
     key_t key = entity_->get_key(id);

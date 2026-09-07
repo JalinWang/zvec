@@ -109,6 +109,12 @@ class HnswRabitqAddDistCalculator {
     return score;
   }
 
+  //! Returns distance between two already-fetched vectors.
+  inline dist_t dist_cached(const void *vec_lhs, const void *vec_rhs) {
+    compare_cnt_++;
+    return dist(vec_lhs, vec_rhs);
+  }
+
   //! Returns distance between query and vec.
   inline dist_t dist(const void *vec) {
     compare_cnt_++;
@@ -209,6 +215,14 @@ class HnswRabitqAddDistCalculator {
 
   int get_vector(const node_id_t *ids, uint32_t count,
                  std::vector<IndexStorage::MemoryBlock> &vec_blocks) const;
+
+  int get_vector(node_id_t id, IndexStorage::MemoryBlock &vec_block) const {
+    key_t key = entity_->get_key(id);
+    if (key == kInvalidKey) {
+      return IndexError_NoExist;
+    }
+    return provider_->get_vector(key, vec_block);
+  }
 
   const void *get_vector(node_id_t id) const {
     key_t key = entity_->get_key(id);
