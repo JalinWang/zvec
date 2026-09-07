@@ -138,6 +138,10 @@ class FlatStreamerEntity {
   virtual int get_vector_by_key(const uint64_t key,
                                 IndexStorage::MemoryBlock &block) const;
 
+  int get_vectors_by_key(
+      const uint64_t *keys, uint32_t count,
+      std::vector<IndexStorage::MemoryBlock> &blocks) const;
+
   //! Create a new iterator
   IndexProvider::Iterator::Pointer creater_iterator(void) const;
 
