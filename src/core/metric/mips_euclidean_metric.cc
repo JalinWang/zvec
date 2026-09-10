@@ -15,6 +15,7 @@
 #include <ailego/math/inner_product_matrix.h>
 #include <ailego/math/mips_euclidean_distance_matrix.h>
 #include <ailego/math/norm2_matrix.h>
+#include <ailego/math_batch/mips_distance_batch.h>
 #include <zvec/core/framework/index_error.h>
 #include <zvec/core/framework/index_factory.h>
 #include "metric_params.h"
@@ -129,6 +130,9 @@ class MipsSquaredEuclideanMetric : public IndexMetric {
 
   //! Retrieve distance function for query
   MatrixBatchDistance batch_distance() const override {
+    if (auto batch = stored_batch_distance()) {
+      return batch;
+    }
     MatrixDistance dist_func = distance();
 
     return [=](const void **m, const void *q, size_t num, size_t dim,
@@ -136,6 +140,25 @@ class MipsSquaredEuclideanMetric : public IndexMetric {
       for (size_t i = 0; i < num; ++i) {
         dist_func(m[i], q, dim, out + i);
       }
+    };
+  }
+
+  MatrixBatchDistance stored_batch_distance() const override {
+    // Other injections and quantized representations retain their existing
+    // pairwise implementation. Localized spherical FP32 needs no training
+    // state or query transformation.
+    if constexpr (is_spares) {
+      return nullptr;
+    }
+    if (data_type_ != IndexMeta::DataType::DT_FP32 ||
+        injection_ != Injection::kLocalizedSpherical) {
+      return nullptr;
+    }
+    return [](const void **vectors, const void *query, size_t count,
+              size_t dimension, float *out, const void **) {
+      ailego::DistanceBatch::MipsSquaredEuclideanFp32Batch(
+          reinterpret_cast<const float **>(vectors),
+          static_cast<const float *>(query), count, dimension, out);
     };
   }
 

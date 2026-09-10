@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <array>
+#include <cmath>
+#include <random>
 #include <vector>
 #include <gtest/gtest.h>
 #include <zvec/core/framework/index_factory.h>
@@ -175,6 +177,112 @@ TEST(HnswDistCalculatorTest, PassesNullWhenMetricHasNoExtraValues) {
   calculator.reset_query(&query);
   calculator.batch_dist(&vector, 1, &distance, nullptr);
   EXPECT_FLOAT_EQ(0.0f, distance);
+}
+
+TEST(HnswDistCalculatorTest, StoredBatchMatchesPairwiseAndPreservesQuery) {
+  std::mt19937 rng(20260907);
+  std::normal_distribution<float> normal;
+  for (const char *name :
+       {"SquaredEuclidean", "Cosine", "MipsSquaredEuclidean"}) {
+    for (size_t base_dim : {1U, 7U, 16U, 1024U, 1025U}) {
+      // Cosine's stored representation has a trailing norm value.
+      size_t dimension = base_dim + (std::string(name) == "Cosine" ? 1 : 0);
+      IndexMeta meta(IndexMeta::DataType::DT_FP32, dimension);
+      auto metric = IndexFactory::CreateMetric(name);
+      ASSERT_NE(nullptr, metric);
+      ASSERT_EQ(0, metric->init(meta, ailego::Params()));
+      ASSERT_TRUE(metric->stored_batch_distance());
+      HnswDistCalculator calculator(nullptr, metric,
+                                    static_cast<uint32_t>(dimension));
+      std::vector<float> data(102 * dimension);
+      for (auto &value : data) value = normal(rng);
+      if (std::string(name) == "Cosine") {
+        for (size_t row = 0; row < 102; ++row) {
+          float *record = data.data() + row * dimension;
+          double norm = 0;
+          for (size_t d = 0; d < base_dim; ++d) norm += record[d] * record[d];
+          for (size_t d = 0; d < base_dim; ++d) record[d] /= std::sqrt(norm);
+          record[base_dim] = 1.0f;
+        }
+      }
+      const float *center = data.data() + 100 * dimension;
+      const float *query = data.data() + 101 * dimension;
+      calculator.reset_query(query);
+      std::vector<const void *> vectors(100);
+      for (size_t i = 0; i < vectors.size(); ++i) {
+        vectors[i] = data.data() + i * dimension;
+      }
+      std::vector<float> out(100);
+      for (size_t count : {0U, 1U, 11U, 12U, 13U, 100U}) {
+        SCOPED_TRACE(std::string(name) + " dim=" + std::to_string(dimension) +
+                     " count=" + std::to_string(count));
+        calculator.clear();
+        ASSERT_TRUE(calculator.batch_dist_between_vectors(
+            center, vectors.data(), count, out.data()));
+        EXPECT_EQ(count, calculator.compare_cnt());
+        for (size_t i = 0; i < count; ++i) {
+          float expected = metric->distance(center, vectors[i], dimension);
+          EXPECT_NEAR(expected, out[i],
+                      1e-5f * std::max(1.0f, std::abs(expected)));
+        }
+        EXPECT_FLOAT_EQ(metric->distance(center, query, dimension),
+                        calculator.dist(center));
+        EXPECT_EQ(count + 1, calculator.compare_cnt());
+        EXPECT_FALSE(calculator.error());
+      }
+    }
+  }
+}
+
+TEST(HnswDistCalculatorTest, RebindingClearsStoredBatchAndUsesPairwiseOrder) {
+  auto metric = CreateMetric();
+  HnswDistCalculator calculator(nullptr, metric, 1);
+  bool query_batch_called = false;
+  // An asymmetric fallback catches accidental swapping of the two inputs.
+  IndexMetric::MatrixDistance pairwise = [](const void *lhs, const void *rhs,
+                                            size_t, float *out) {
+    *out =
+        *static_cast<const float *>(lhs) + 2 * *static_cast<const float *>(rhs);
+  };
+  IndexMetric::MatrixBatchDistance query_batch =
+      [&](const void **, const void *, size_t, size_t, float *, const void **) {
+        query_batch_called = true;
+      };
+  calculator.update_distance(pairwise, query_batch);
+  float center = 10, candidate = 3, out = 0;
+  const void *vectors[] = {&candidate};
+  ASSERT_TRUE(calculator.batch_dist_between_vectors(&center, vectors, 1, &out));
+  EXPECT_FLOAT_EQ(16, out);
+  EXPECT_EQ(1U, calculator.compare_cnt());
+  EXPECT_FALSE(query_batch_called);
+  EXPECT_FLOAT_EQ(16, calculator.dist_between_vectors(&center, &candidate));
+  EXPECT_EQ(2U, calculator.compare_cnt());
+}
+
+TEST(HnswDistCalculatorTest, StoredBatchRejectsMissingVectors) {
+  auto metric = CreateMetric();
+  HnswDistCalculator calculator(nullptr, metric, 1);
+  float center = 1, out = 123;
+  const void *vectors[] = {nullptr};
+  EXPECT_FALSE(
+      calculator.batch_dist_between_vectors(&center, vectors, 1, &out));
+  EXPECT_TRUE(calculator.error());
+  EXPECT_FLOAT_EQ(123, out);
+  calculator.clear();
+  EXPECT_TRUE(
+      calculator.batch_dist_between_vectors(nullptr, nullptr, 0, nullptr));
+  EXPECT_FALSE(calculator.error());
+}
+
+TEST(HnswDistCalculatorTest, QuantizedMetricsDoNotOptIntoStoredBatch) {
+  for (const char *name :
+       {"SquaredEuclidean", "Cosine", "MipsSquaredEuclidean"}) {
+    IndexMeta meta(IndexMeta::DataType::DT_FP16, 16);
+    auto metric = IndexFactory::CreateMetric(name);
+    ASSERT_NE(nullptr, metric);
+    ASSERT_EQ(0, metric->init(meta, ailego::Params()));
+    EXPECT_FALSE(metric->stored_batch_distance());
+  }
 }
 
 }  // namespace

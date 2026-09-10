@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "hnsw_algorithm.h"
 #include <type_traits>
+#include <ailego/pattern/defer.h>
 
 namespace zvec {
 namespace core {
@@ -183,12 +184,13 @@ void HnswAlgorithm<EntityType>::add_neighbors(node_id_t id, level_t level,
 
   HnswDistCalculator &dc = ctx->dist_calculator();
 
-  update_neighbors(dc, id, level, topk_heap);
+  update_neighbors(dc, id, level, topk_heap, ctx);
+  if (dc.error()) return;
 
   // reverse update neighbors
   for (size_t i = 0; i < topk_heap.size(); ++i) {
     reverse_update_neighbors(dc, topk_heap[i].first, level, id,
-                             topk_heap[i].second, ctx->update_heap());
+                             topk_heap[i].second, ctx);
   }
 
   return;
@@ -641,7 +643,8 @@ void HnswAlgorithm<EntityType>::expand_neighbors_by_group(
 template <typename EntityType>
 void HnswAlgorithm<EntityType>::update_neighbors(HnswDistCalculator &dc,
                                                  node_id_t id, level_t level,
-                                                 TopkHeap &topk_heap) {
+                                                 TopkHeap &topk_heap,
+                                                 HnswContext *ctx) {
   topk_heap.sort();
 
   uint32_t max_neighbor_cnt = entity_.neighbor_cnt(level);
@@ -652,13 +655,30 @@ void HnswAlgorithm<EntityType>::update_neighbors(HnswDistCalculator &dc,
     }
   }
 
+  auto &buffer = ctx->neighbor_update_buffer();
+  buffer.blocks.clear();
+  buffer.vectors.clear();
+  buffer.blocks.reserve(max_neighbor_cnt);
+  buffer.vectors.reserve(max_neighbor_cnt);
+  AILEGO_DEFER([&]() {
+    buffer.blocks.clear();
+    buffer.vectors.clear();
+  });
   uint32_t cur_size = 0;
   for (size_t i = 0; i < topk_heap.size(); ++i) {
     node_id_t cur_node = topk_heap[i].first;
     dist_t cur_node_dist = topk_heap[i].second;
+    IndexStorage::MemoryBlock candidate;
+    if (dc.get_vector(cur_node, candidate) != 0 ||
+        candidate.data() == nullptr) {
+      LOG_ERROR("Failed to fetch HNSW pruning vector, id=%u", cur_node);
+      dc.set_error();
+      return;
+    }
     bool good = true;
     for (uint32_t j = 0; j < cur_size; ++j) {
-      dist_t tmp_dist = dc.dist(cur_node, topk_heap[j].first);
+      dist_t tmp_dist =
+          dc.dist_between_vectors(candidate.data(), buffer.vectors[j]);
       if (tmp_dist <= cur_node_dist) {
         good = false;
         break;
@@ -668,6 +688,8 @@ void HnswAlgorithm<EntityType>::update_neighbors(HnswDistCalculator &dc,
     if (good) {
       topk_heap.mutable_at(cur_size).first = cur_node;
       topk_heap.mutable_at(cur_size).second = cur_node_dist;
+      buffer.vectors.push_back(candidate.data());
+      buffer.blocks.push_back(std::move(candidate));
       cur_size++;
       if (cur_size >= max_neighbor_cnt) {
         break;
@@ -705,30 +727,62 @@ void HnswAlgorithm<EntityType>::update_neighbors(HnswDistCalculator &dc,
 template <typename EntityType>
 void HnswAlgorithm<EntityType>::reverse_update_neighbors(
     HnswDistCalculator &dc, node_id_t id, level_t level, node_id_t link_id,
-    dist_t dist, TopkHeap &update_heap) {
+    dist_t dist, HnswContext *ctx) {
   const size_t max_neighbor_cnt = entity_.neighbor_cnt(level);
 
   uint32_t lock_idx = id & kLockMask;
-  lock_pool_[lock_idx].lock();
+  const std::lock_guard<std::mutex> lock(lock_pool_[lock_idx]);
   const Neighbors neighbors = entity_.get_neighbors(level, id);
   size_t size = neighbors.size();
   ailego_assert_with(size <= max_neighbor_cnt, "invalid neighbor size");
   if (size < max_neighbor_cnt) {
     entity_.add_neighbor(level, id, size, link_id);
-    lock_pool_[lock_idx].unlock();
     return;
   }
 
-  update_heap.emplace(link_id, dist);
-
-  for (size_t i = 0; i < size; ++i) {
-    node_id_t node = neighbors[i];
-    dist_t cur_dist = dc.dist(id, node);
-    update_heap.emplace(node, cur_dist);
+  auto &update_heap = ctx->update_heap();
+  auto &buffer = ctx->neighbor_update_buffer();
+  buffer.ids.assign(neighbors.data, neighbors.data + size);
+  buffer.ids.push_back(link_id);
+  buffer.blocks.clear();
+  AILEGO_DEFER([&]() {
+    update_heap.clear();
+    buffer.blocks.clear();
+    buffer.vectors.clear();
+  });
+  IndexStorage::MemoryBlock center;
+  if (dc.get_vector(id, center) != 0 || center.data() == nullptr ||
+      dc.get_vector(buffer.ids.data(), static_cast<uint32_t>(buffer.ids.size()),
+                    buffer.blocks) != 0) {
+    LOG_ERROR("Failed to fetch HNSW reverse-pruning vectors, id=%u", id);
+    dc.set_error();
+    return;
+  }
+  buffer.vectors.resize(buffer.blocks.size());
+  for (size_t i = 0; i < buffer.blocks.size(); ++i) {
+    buffer.vectors[i] = buffer.blocks[i].data();
+    if (buffer.vectors[i] == nullptr) {
+      LOG_ERROR("Null HNSW reverse-pruning vector, id=%u", buffer.ids[i]);
+      dc.set_error();
+      return;
+    }
   }
 
-  //! TODO: optimize prune
-  //! prune edges
+  // Heap keys are temporary offsets into the pinned vectors. TopkHeap
+  // compares distances only, so insertion and tie ordering are unchanged.
+  update_heap.emplace(static_cast<node_id_t>(size), dist);
+
+  buffer.distances.resize(size);
+  if (!dc.batch_dist_between_vectors(center.data(), buffer.vectors.data(), size,
+                                     buffer.distances.data())) {
+    return;
+  }
+  for (size_t i = 0; i < size; ++i) {
+    update_heap.emplace(static_cast<node_id_t>(i), buffer.distances[i]);
+  }
+
+  // Preserve the pairwise early exit; eagerly batching these comparisons
+  // computes distances that pruning frequently does not need.
   update_heap.sort();
   size_t cur_size = 0;
   for (size_t i = 0; i < update_heap.size(); ++i) {
@@ -736,7 +790,8 @@ void HnswAlgorithm<EntityType>::reverse_update_neighbors(
     dist_t cur_node_dist = update_heap[i].second;
     bool good = true;
     for (size_t j = 0; j < cur_size; ++j) {
-      dist_t tmp_dist = dc.dist(cur_node, update_heap[j].first);
+      dist_t tmp_dist = dc.dist_between_vectors(
+          buffer.vectors[cur_node], buffer.vectors[update_heap[j].first]);
       if (tmp_dist <= cur_node_dist) {
         good = false;
         break;
@@ -754,11 +809,11 @@ void HnswAlgorithm<EntityType>::reverse_update_neighbors(
   }
 
   update_heap.truncate(cur_size);
+  for (size_t i = 0; i < cur_size; ++i) {
+    auto &node = update_heap.mutable_at(i).first;
+    node = buffer.ids[node];
+  }
   entity_.update_neighbors(level, id, update_heap.container());
-
-  lock_pool_[lock_idx].unlock();
-
-  update_heap.clear();
 
   return;
 }

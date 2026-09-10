@@ -335,6 +335,19 @@ class HnswContext : public IndexContext {
     return update_heap_;
   }
 
+  // Reused by one worker during forward/reverse pruning. MemoryBlocks are
+  // released after each update; only the allocation capacity is retained.
+  struct NeighborUpdateBuffer {
+    std::vector<node_id_t> ids;
+    std::vector<IndexStorage::MemoryBlock> blocks;
+    std::vector<const void *> vectors;
+    std::vector<dist_t> distances;
+  };
+
+  NeighborUpdateBuffer &neighbor_update_buffer() {
+    return neighbor_update_buffer_;
+  }
+
   inline LinearPool<dist_t> &pool() {
     return pool_;
   }
@@ -546,7 +559,8 @@ class HnswContext : public IndexContext {
       const IndexMetric::MatrixDistance &distance,
       const IndexMetric::MatrixBatchDistance &batch_distance,
       IndexProvider::Pointer provider, size_t vector_size,
-      size_t extra_values_size) {
+      size_t extra_values_size,
+      const IndexMetric::MatrixBatchDistance &stored_batch_distance = nullptr) {
     if (ailego_unlikely(extra_values_size != 0 &&
                         extra_values_size >= vector_size)) {
       LOG_ERROR("Invalid HNSW vector layout, vector_size=%zu extra_size=%zu",
@@ -557,7 +571,7 @@ class HnswContext : public IndexContext {
       vector_data_size_ = vector_size - extra_values_size;
       extra_values_size_ = extra_values_size;
     }
-    dc_.update_distance(distance, batch_distance);
+    dc_.update_distance(distance, batch_distance, stored_batch_distance);
     dc_.set_provider(std::move(provider));
   }
 
@@ -626,6 +640,7 @@ class HnswContext : public IndexContext {
   std::vector<IndexGroupDocumentList> group_results_{};
   TopkHeap topk_heap_{};
   TopkHeap update_heap_{};
+  NeighborUpdateBuffer neighbor_update_buffer_;
   std::vector<TopkHeap> level_topks_{};
   CandidateHeap candidates_{};
   VisitFilter visit_filter_{};

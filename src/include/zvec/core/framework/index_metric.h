@@ -89,6 +89,15 @@ struct IndexMetric : public IndexModule {
     return nullptr;
   }
 
+  //! Optional one-to-many distance between stored vectors: out[i] has the
+  //! semantics of distance(q, m[i]). Both sides use the stored representation,
+  //! without query preprocessing. Unlike batch_distance(), this must also be
+  //! valid when q is an arbitrary stored vector, e.g. during graph pruning.
+  //! A null handle asks the caller to use pairwise distance() instead.
+  virtual MatrixBatchDistance stored_batch_distance(void) const {
+    return nullptr;
+  }
+
   //! Number of trailing bytes per stored record that a storage backend may
   //! split into an extra-values column.
   virtual size_t extra_values_size_per_vector(void) const {

@@ -647,6 +647,11 @@ class SquaredEuclideanMetric : public IndexMetric {
     }
   }
 
+  MatrixBatchDistance stored_batch_distance(void) const override {
+    return data_type_ == IndexMeta::DataType::DT_FP32 ? batch_distance()
+                                                      : nullptr;
+  }
+
   //! Retrieve params of Metric
   const ailego::Params &params(void) const override {
     return params_;

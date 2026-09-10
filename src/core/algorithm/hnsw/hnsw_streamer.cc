@@ -576,7 +576,8 @@ void HnswStreamer::bind_add_dist_space(HnswContext *ctx) const {
   const size_t vector_size =
       provider_ ? provider_meta_.element_size() : meta_.element_size();
   ctx->bind_dist_space(add_distance_, add_batch_distance_, provider_,
-                       vector_size, add_metric->extra_values_size_per_vector());
+                       vector_size, add_metric->extra_values_size_per_vector(),
+                       add_metric->stored_batch_distance());
 }
 
 void HnswStreamer::bind_search_dist_space(HnswContext *ctx) const {

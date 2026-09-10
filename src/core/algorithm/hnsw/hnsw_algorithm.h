@@ -122,14 +122,14 @@ class HnswAlgorithm : public HnswAlgorithmBase {
 
   //! Update the node's neighbors
   void update_neighbors(HnswDistCalculator &dc, node_id_t id, level_t level,
-                        TopkHeap &topk_heap);
+                        TopkHeap &topk_heap, HnswContext *ctx);
 
   //! Checking linkId could be id's new neighbor, and add as neighbor if true
   //! @dc         distance calculator
-  //! @updateHeap temporary heap in updating neighbors
+  //! @ctx        worker context owning the temporary heap and vector cache
   void reverse_update_neighbors(HnswDistCalculator &dc, node_id_t id,
                                 level_t level, node_id_t link_id, dist_t dist,
-                                TopkHeap &update_heap);
+                                HnswContext *ctx);
 
   //! expand neighbors until group nums are reached
   void expand_neighbors_by_group(TopkHeap &topk, HnswContext *ctx) const;

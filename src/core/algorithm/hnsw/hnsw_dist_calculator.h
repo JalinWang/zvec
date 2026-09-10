@@ -40,6 +40,7 @@ class HnswDistCalculator {
       : entity_(entity),
         distance_(metric->distance()),
         batch_distance_(metric->batch_distance()),
+        stored_batch_distance_(metric->stored_batch_distance()),
         query_(nullptr),
         dim_(dim),
         compare_cnt_(0) {}
@@ -51,6 +52,7 @@ class HnswDistCalculator {
       : entity_(entity),
         distance_(metric->distance()),
         batch_distance_(metric->batch_distance()),
+        stored_batch_distance_(metric->stored_batch_distance()),
         query_(query),
         dim_(dim),
         compare_cnt_(0) {}
@@ -61,6 +63,7 @@ class HnswDistCalculator {
       : entity_(entity),
         distance_(metric->distance()),
         batch_distance_(metric->batch_distance()),
+        stored_batch_distance_(metric->stored_batch_distance()),
         query_(nullptr),
         dim_(0),
         compare_cnt_(0) {}
@@ -69,6 +72,7 @@ class HnswDistCalculator {
     entity_ = entity;
     distance_ = metric->distance();
     batch_distance_ = metric->batch_distance();
+    stored_batch_distance_ = metric->stored_batch_distance();
   }
 
   void update(const HnswEntity *entity, const IndexMetric::Pointer &metric,
@@ -76,14 +80,17 @@ class HnswDistCalculator {
     entity_ = entity;
     distance_ = metric->distance();
     batch_distance_ = metric->batch_distance();
+    stored_batch_distance_ = metric->stored_batch_distance();
     dim_ = dim;
   }
 
   inline void update_distance(
       const IndexMetric::MatrixDistance &distance,
-      const IndexMetric::MatrixBatchDistance &batch_distance) {
+      const IndexMetric::MatrixBatchDistance &batch_distance,
+      const IndexMetric::MatrixBatchDistance &stored_batch_distance = nullptr) {
     distance_ = distance;
     batch_distance_ = batch_distance;
+    stored_batch_distance_ = stored_batch_distance;
   }
 
   //! Update the dimension used by distance computation
@@ -110,6 +117,42 @@ class HnswDistCalculator {
     distance_(vec_lhs, vec_rhs, dim_, &score);
 
     return score;
+  }
+
+  //! A stored-vector comparison whose inputs have already been fetched.
+  inline dist_t dist_between_vectors(const void *lhs, const void *rhs) {
+    ++compare_cnt_;
+    return dist(lhs, rhs);
+  }
+
+  inline void set_error() {
+    error_ = true;
+  }
+
+  //! Does not replace query_: pruning must not change the insertion query.
+  bool batch_dist_between_vectors(const void *center, const void **vectors,
+                                  size_t count, dist_t *distances) {
+    if (count == 0) return true;
+    if (center == nullptr || vectors == nullptr || distances == nullptr) {
+      error_ = true;
+      return false;
+    }
+    for (size_t i = 0; i < count; ++i) {
+      if (vectors[i] == nullptr) {
+        error_ = true;
+        return false;
+      }
+    }
+    // Preserve the scan accounting of the pairwise reverse-update loop.
+    compare_cnt_ += static_cast<uint32_t>(count);
+    if (stored_batch_distance_) {
+      stored_batch_distance_(vectors, center, count, dim_, distances, nullptr);
+    } else {
+      for (size_t i = 0; i < count; ++i) {
+        distance_(center, vectors[i], dim_, distances + i);
+      }
+    }
+    return true;
   }
 
   //! Returns distance between query and vec.
@@ -275,6 +318,7 @@ class HnswDistCalculator {
 
   IndexMetric::MatrixDistance distance_;
   IndexMetric::MatrixBatchDistance batch_distance_;
+  IndexMetric::MatrixBatchDistance stored_batch_distance_;
 
   const void *query_;
   uint32_t dim_;
