@@ -297,9 +297,9 @@ void HnswRabitqAlgorithm::update_neighbors(HnswRabitqAddDistCalculator &dc,
   return;
 }
 
-size_t HnswRabitqAlgorithm::prune_neighbors(
-    HnswRabitqAddDistCalculator &dc, TopkHeap &topk_heap,
-    size_t max_neighbor_cnt) {
+size_t HnswRabitqAlgorithm::prune_neighbors(HnswRabitqAddDistCalculator &dc,
+                                            TopkHeap &topk_heap,
+                                            size_t max_neighbor_cnt) {
   std::vector<node_id_t> candidate_ids(topk_heap.size());
   for (size_t i = 0; i < topk_heap.size(); ++i) {
     candidate_ids[i] = topk_heap[i].first;
