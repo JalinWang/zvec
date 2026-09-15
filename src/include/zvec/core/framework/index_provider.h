@@ -29,7 +29,7 @@ struct IndexProvider : public IndexHolder {
   typedef std::shared_ptr<IndexProvider> Pointer;
 
   //! Destructor
-  ~IndexProvider(void) override {}
+  ~IndexProvider() override = default;
 
   bool multipass() const override {
     return true;
@@ -62,7 +62,7 @@ struct IndexProvider : public IndexHolder {
   }
 
   //! Retrieve the owner class
-  virtual const std::string &owner_class(void) const = 0;
+  virtual const std::string &owner_class() const = 0;
 };
 
 /*! Index SparseProvider
@@ -72,7 +72,7 @@ struct IndexSparseProvider : IndexSparseHolder {
   typedef std::shared_ptr<IndexSparseProvider> Pointer;
 
   //! Destructor
-  ~IndexSparseProvider(void) override {}
+  ~IndexSparseProvider() override = default;
 
   bool multipass() const override {
     return true;
@@ -85,7 +85,7 @@ struct IndexSparseProvider : IndexSparseHolder {
                                 std::string *sparse_values_buffer) const = 0;
 
   //! Retrieve the owner class
-  virtual const std::string &owner_class(void) const = 0;
+  virtual const std::string &owner_class() const = 0;
 };
 
 /*! Multi-Pass Numerical Index Provider
@@ -98,25 +98,25 @@ class MultiPassNumericalIndexProvider : public IndexProvider {
       : holder_(dim), owner_class_("MultiPassNumericalIndexProvider") {}
 
   //! Destructor
-  ~MultiPassNumericalIndexProvider(void) override {}
+  ~MultiPassNumericalIndexProvider() override = default;
 
   //! Retrieve count of elements in holder
-  size_t count(void) const override {
+  size_t count() const override {
     return holder_.count();
   }
 
   //! Retrieve dimension
-  size_t dimension(void) const override {
+  size_t dimension() const override {
     return holder_.dimension();
   }
 
   //! Retrieve element size in bytes
-  size_t element_size(void) const override {
+  size_t element_size() const override {
     return holder_.element_size();
   }
 
   //! Create a new iterator
-  IndexHolder::Iterator::Pointer create_iterator(void) override {
+  IndexHolder::Iterator::Pointer create_iterator() override {
     return holder_.create_iterator();
   }
 
@@ -141,7 +141,7 @@ class MultiPassNumericalIndexProvider : public IndexProvider {
   }
 
   //! Retrieve the owner class
-  const std::string &owner_class(void) const override {
+  const std::string &owner_class() const override {
     return owner_class_;
   }
 
@@ -180,25 +180,25 @@ class MultiPassBinaryIndexProvider : public IndexProvider {
       : holder_(dim), owner_class_("MultiPassBinaryIndexProvider") {}
 
   //! Destructor
-  ~MultiPassBinaryIndexProvider(void) override {}
+  ~MultiPassBinaryIndexProvider() override = default;
 
   //! Retrieve count of elements in holder
-  size_t count(void) const override {
+  size_t count() const override {
     return holder_.count();
   }
 
   //! Retrieve dimension
-  size_t dimension(void) const override {
+  size_t dimension() const override {
     return holder_.dimension();
   }
 
   //! Retrieve element size in bytes
-  size_t element_size(void) const override {
+  size_t element_size() const override {
     return holder_.element_size();
   }
 
   //! Create a new iterator
-  IndexHolder::Iterator::Pointer create_iterator(void) override {
+  IndexHolder::Iterator::Pointer create_iterator() override {
     return holder_.create_iterator();
   }
 
@@ -223,7 +223,7 @@ class MultiPassBinaryIndexProvider : public IndexProvider {
   }
 
   //! Retrieve the owner class
-  const std::string &owner_class(void) const override {
+  const std::string &owner_class() const override {
     return owner_class_;
   }
 
@@ -266,7 +266,7 @@ struct MultiPassIndexProvider<IndexMeta::DataType::DT_BINARY32>
   using MultiPassBinaryIndexProvider::MultiPassBinaryIndexProvider;
 
   //! Retrieve type information
-  IndexMeta::DataType data_type(void) const override {
+  IndexMeta::DataType data_type() const override {
     return IndexMeta::DataType::DT_BINARY32;
   }
 };
@@ -280,7 +280,7 @@ struct MultiPassIndexProvider<IndexMeta::DataType::DT_BINARY64>
   using MultiPassBinaryIndexProvider::MultiPassBinaryIndexProvider;
 
   //! Retrieve type information
-  IndexMeta::DataType data_type(void) const override {
+  IndexMeta::DataType data_type() const override {
     return IndexMeta::DataType::DT_BINARY64;
   }
 };
@@ -294,7 +294,7 @@ struct MultiPassIndexProvider<IndexMeta::DataType::DT_FP16>
   using MultiPassNumericalIndexProvider::MultiPassNumericalIndexProvider;
 
   //! Retrieve type information
-  IndexMeta::DataType data_type(void) const override {
+  IndexMeta::DataType data_type() const override {
     return IndexMeta::DataType::DT_FP16;
   }
 };
@@ -308,7 +308,7 @@ struct MultiPassIndexProvider<IndexMeta::DataType::DT_FP32>
   using MultiPassNumericalIndexProvider::MultiPassNumericalIndexProvider;
 
   //! Retrieve type information
-  IndexMeta::DataType data_type(void) const override {
+  IndexMeta::DataType data_type() const override {
     return IndexMeta::DataType::DT_FP32;
   }
 };
@@ -322,7 +322,7 @@ struct MultiPassIndexProvider<IndexMeta::DataType::DT_FP64>
   using MultiPassNumericalIndexProvider::MultiPassNumericalIndexProvider;
 
   //! Retrieve type information
-  IndexMeta::DataType data_type(void) const override {
+  IndexMeta::DataType data_type() const override {
     return IndexMeta::DataType::DT_FP64;
   }
 };
@@ -336,7 +336,7 @@ struct MultiPassIndexProvider<IndexMeta::DataType::DT_INT8>
   using MultiPassNumericalIndexProvider::MultiPassNumericalIndexProvider;
 
   //! Retrieve type information
-  IndexMeta::DataType data_type(void) const override {
+  IndexMeta::DataType data_type() const override {
     return IndexMeta::DataType::DT_INT8;
   }
 };
@@ -350,7 +350,7 @@ struct MultiPassIndexProvider<IndexMeta::DataType::DT_INT16>
   using MultiPassNumericalIndexProvider::MultiPassNumericalIndexProvider;
 
   //! Retrieve type information
-  IndexMeta::DataType data_type(void) const override {
+  IndexMeta::DataType data_type() const override {
     return IndexMeta::DataType::DT_INT16;
   }
 };
