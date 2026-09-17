@@ -17,17 +17,6 @@
 
 namespace zvec::core {
 
-int HnswRabitqAddDistCalculator::get_vectors(
-    const node_id_t *ids, uint32_t count,
-    std::vector<IndexStorage::MemoryBlock> &vec_blocks) const {
-  std::vector<key_t> keys(count);
-  for (uint32_t i = 0; i < count; ++i) {
-    keys[i] = entity_->get_key(ids[i]);
-    if (keys[i] == kInvalidKey) {
-      return IndexError_NoExist;
-    }
-  }
-  return provider_->get_vectors(keys.data(), count, vec_blocks);
-}
+
 
 }  // namespace zvec::core
