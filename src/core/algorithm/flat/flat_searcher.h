@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #pragma once
+#include <memory>
 #include <unordered_map>
+#include <turbo/quantizer/quantizer.h>
 #include <zvec/ailego/container/params.h>
 #include <zvec/core/framework/index_searcher.h>
 #include "flat_distance_matrix.h"
@@ -37,6 +39,13 @@ class FlatSearcher : public IndexSearcher {
     return 0;
   }
 
+  //! Initialize Searcher with a turbo quantizer
+  int init(const ailego::Params &index_params,
+           const std::shared_ptr<zvec::turbo::Quantizer> &quantizer) override {
+    quantizer_ = quantizer;
+    return this->init(index_params);
+  }
+
   //! Cleanup Searcher
   int cleanup() override {
     return this->unload();
@@ -49,7 +58,9 @@ class FlatSearcher : public IndexSearcher {
   int unload() override {
     container_ = nullptr;
     measure_ = nullptr;
+    quantizer_.reset();
     features_segment_ = nullptr;
+    keys_block_.reset();
     keys_ = nullptr;
     key_id_mapping_.clear();
     return 0;
@@ -150,6 +161,15 @@ class FlatSearcher : public IndexSearcher {
     return distance_matrix_;
   }
 
+  //! Retrieve the turbo quantizer
+  const std::shared_ptr<zvec::turbo::Quantizer> &quantizer() const {
+    return quantizer_;
+  }
+
+  const IndexMetric::Pointer &metric() const {
+    return measure_;
+  }
+
   //! Clone a features segment
   IndexStorage::Segment::Pointer clone_features_segment() const {
     return features_segment_->clone();
@@ -161,7 +181,11 @@ class FlatSearcher : public IndexSearcher {
   }
 
  private:
+  //! Validate turbo query records, preserving legacy metric assertions.
+  int check_query_meta(const IndexQueryMeta &qmeta) const;
+
   //! Members
+  IndexStorage::MemoryBlock keys_block_{};
   const uint64_t *keys_{nullptr};
   std::unordered_map<key_t, node_id_t> key_id_mapping_;
   uint32_t magic_{IndexContext::GenerateMagic()};
@@ -175,6 +199,7 @@ class FlatSearcher : public IndexSearcher {
   mutable std::vector<uint32_t> mapping_{};
   mutable std::mutex mapping_mutex_{};
   FlatDistanceMatrix<BATCH_SIZE> distance_matrix_{};
+  std::shared_ptr<zvec::turbo::Quantizer> quantizer_{};
   IndexSearcher::Stats stats_{};
 };
 
