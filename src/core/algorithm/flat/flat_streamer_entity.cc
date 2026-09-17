@@ -775,7 +775,8 @@ int FlatStreamerEntity::get_vector_by_key(
   return 0;
 }
 
-int(const uint64_t *keys, uint32_t count,
+int FlatStreamerEntity::get_vectors_by_key(
+    const uint64_t *keys, uint32_t count,
     std::vector<IndexStorage::MemoryBlock> &blocks) const {
   std::vector<VectorLocation> locations(count);
   key_info_map_lock_->lock_shared();
