@@ -765,8 +765,7 @@ int FlatStreamerEntity::get_vector_by_key(
   return 0;
 }
 
-int FlatStreamerEntity::get_vectors_by_key(
-    const uint64_t *keys, uint32_t count,
+int(const uint64_t *keys, uint32_t count,
     std::vector<IndexStorage::MemoryBlock> &blocks) const {
   std::vector<VectorLocation> locations(count);
   key_info_map_lock_->lock_shared();
@@ -790,17 +789,16 @@ int FlatStreamerEntity::get_vectors_by_key(
   }
   key_info_map_lock_->unlock_shared();
 
-  blocks.reserve(blocks.size() + count);
-  for (const VectorLocation &loc : locations) {
+  blocks.resize(count);
+  for (uint32_t i = 0; i < count; ++i) {
+    const VectorLocation &loc = locations[i];
     auto segment = this->get_segment(loc.segment_id);
-    IndexStorage::MemoryBlock block;
     if (!segment ||
-        segment->read(loc.offset, block, index_meta_.element_size()) !=
+        segment->read(loc.offset, blocks[i], index_meta_.element_size()) !=
             index_meta_.element_size()) {
       LOG_ERROR("Failed to read segment, size=%u", index_meta_.element_size());
       return -1;
     }
-    blocks.push_back(std::move(block));
   }
   return 0;
 }

@@ -17,7 +17,7 @@
 
 namespace zvec::core {
 
-int HnswRabitqAddDistCalculator::get_vector(
+int HnswRabitqAddDistCalculator::get_vectors(
     const node_id_t *ids, uint32_t count,
     std::vector<IndexStorage::MemoryBlock> &vec_blocks) const {
   std::vector<key_t> keys(count);

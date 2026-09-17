@@ -49,14 +49,12 @@ struct IndexProvider : public IndexHolder {
   virtual int get_vectors(
       const uint64_t *keys, uint32_t count,
       std::vector<IndexStorage::MemoryBlock> &blocks) const {
-    blocks.reserve(blocks.size() + count);
+    blocks.resize(count);
     for (uint32_t i = 0; i < count; ++i) {
-      IndexStorage::MemoryBlock block;
-      int ret = get_vector(keys[i], block);
+      int ret = get_vector(keys[i], blocks[i]);
       if (ret != 0) {
         return ret;
       }
-      blocks.push_back(std::move(block));
     }
     return 0;
   }

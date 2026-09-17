@@ -213,8 +213,8 @@ class HnswRabitqAddDistCalculator {
     provider_ = std::move(provider);
   }
 
-  int get_vector(const node_id_t *ids, uint32_t count,
-                 std::vector<IndexStorage::MemoryBlock> &vec_blocks) const;
+  int get_vectors(const node_id_t *ids, uint32_t count,
+                  std::vector<IndexStorage::MemoryBlock> &vec_blocks) const;
 
   int get_vector(node_id_t id, IndexStorage::MemoryBlock &vec_block) const {
     key_t key = entity_->get_key(id);

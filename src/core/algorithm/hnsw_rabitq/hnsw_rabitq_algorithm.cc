@@ -98,7 +98,7 @@ void HnswRabitqAlgorithm::select_entry_point(level_t level,
     }
 
     std::vector<IndexStorage::MemoryBlock> neighbor_vec_blocks;
-    int ret = dc.get_vector(&neighbors[0], size, neighbor_vec_blocks);
+    int ret = dc.get_vectors(&neighbors[0], size, neighbor_vec_blocks);
     if (ailego_unlikely(ctx->debugging())) {
       (*ctx->mutable_stats_get_vector())++;
     }
@@ -209,7 +209,7 @@ void HnswRabitqAlgorithm::search_neighbors(level_t level,
     }
 
     std::vector<IndexStorage::MemoryBlock> neighbor_vec_blocks;
-    int ret = dc.get_vector(neighbor_ids.data(), size, neighbor_vec_blocks);
+    int ret = dc.get_vectors(neighbor_ids.data(), size, neighbor_vec_blocks);
     if (ailego_unlikely(ctx->debugging())) {
       (*ctx->mutable_stats_get_vector())++;
     }
@@ -306,9 +306,9 @@ size_t HnswRabitqAlgorithm::prune_neighbors(HnswRabitqAddDistCalculator &dc,
   }
 
   std::vector<IndexStorage::MemoryBlock> candidate_blocks;
-  int ret = dc.get_vector(candidate_ids.data(),
-                          static_cast<uint32_t>(candidate_ids.size()),
-                          candidate_blocks);
+  int ret = dc.get_vectors(candidate_ids.data(),
+                           static_cast<uint32_t>(candidate_ids.size()),
+                           candidate_blocks);
 
   size_t cur_size = 0;
   if (ailego_likely(ret == 0)) {
@@ -395,9 +395,9 @@ void HnswRabitqAlgorithm::reverse_update_neighbors(
   std::vector<IndexStorage::MemoryBlock> neighbor_blocks;
   int ret = dc.get_vector(id, center_block);
   if (ailego_likely(ret == 0)) {
-    ret = dc.get_vector(neighbor_ids.data(),
-                        static_cast<uint32_t>(neighbor_ids.size()),
-                        neighbor_blocks);
+    ret = dc.get_vectors(neighbor_ids.data(),
+                         static_cast<uint32_t>(neighbor_ids.size()),
+                         neighbor_blocks);
   }
 
   if (ailego_likely(ret == 0)) {
