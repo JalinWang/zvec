@@ -103,7 +103,7 @@ class ZVEC_AILEGO_API VectorPageTable : public EvictableBlockOwner {
   VectorPageTable() : owner_version_(next_owner_version()) {
     BlockEvictionQueue::get_instance().set_valid(this);
   }
-  ~VectorPageTable() {
+  ~VectorPageTable() override {
     BlockEvictionQueue::get_instance().set_invalid(this);
     // No readers remain during destruction.
     size_t cnt = segment_count_.load(std::memory_order_relaxed);
@@ -716,6 +716,18 @@ class ZVEC_AILEGO_API VecBufferPool {
 
   size_t file_size() const {
     return file_size_;
+  }
+
+  //! The backing file remains available when the budget cannot fit a cache.
+  bool cache_enabled() const {
+    return initialized_;
+  }
+
+  //! Borrow the page-data descriptor (a CRT descriptor on Windows). The pool
+  //! owns it: callers must not close it or change its flags, and must retain
+  //! the pool until they have captured their own handle to the same file.
+  int file_descriptor() const {
+    return fd_;
   }
 
   //! Sequentially preload pages into the pool until pool is full.

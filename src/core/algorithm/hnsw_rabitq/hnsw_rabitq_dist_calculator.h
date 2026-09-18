@@ -241,7 +241,7 @@ class HnswRabitqAddDistCalculator {
     return provider_->get_vector(key);
   }
 
- private:
+ public:
   HnswRabitqAddDistCalculator(const HnswRabitqAddDistCalculator &) = delete;
   HnswRabitqAddDistCalculator &operator=(const HnswRabitqAddDistCalculator &) =
       delete;

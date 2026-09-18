@@ -681,7 +681,7 @@ class IndexStorage : public IndexModule {
   virtual uint32_t magic() const = 0;
 
   //! huge page
-  virtual bool isHugePage() const {
+  virtual bool is_huge_page() const {
     return false;
   }
 
@@ -690,7 +690,8 @@ class IndexStorage : public IndexModule {
     return MemoryBlock::MBT_MMAP;
   }
 
-  //! Return the shared page cache when this storage is backed by VecBufferPool.
+  //! Return the backing pool, including bypass-only mode. Check cache_enabled()
+  //! before using its page cache; its backing file is available in either mode.
   virtual std::shared_ptr<ailego::VecBufferPool> vec_buffer_pool() const {
     return nullptr;
   }
