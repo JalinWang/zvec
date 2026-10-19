@@ -81,6 +81,7 @@ jobs:
             zvec-sdk-linux-musl-amd64.tar.gz
             zvec-sdk-linux-musl-arm64.tar.gz
             zvec-sdk-windows-amd64.zip
+            zvec-sdk-windows-arm64.zip
             zvec-sdk-android-arm64.tar.gz
             zvec-sdk-ios.zip
           )

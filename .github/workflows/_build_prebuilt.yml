@@ -88,6 +88,14 @@ jobs:
             os: windows-2025
             os_name: windows
             arch: amd64
+            msvc_arch: x64
+            ext: zip
+            container: ''
+          - target: aarch64-pc-windows-msvc
+            os: windows-11-arm
+            os_name: windows
+            arch: arm64
+            msvc_arch: arm64
             ext: zip
             container: ''
 
@@ -154,7 +162,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1.13.0
         with:
-          arch: x64
+          arch: ${{ matrix.msvc_arch }}
 
       - name: Configure CMake
         shell: bash
