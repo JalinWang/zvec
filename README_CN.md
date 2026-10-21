@@ -77,16 +77,18 @@ Zvec 提供多语言官方 SDK：
 
 想要图形界面？试试 **[Zvec Studio](https://github.com/zvec-ai/zvec-studio)**，零代码浏览数据与调试查询。
 
-### ✅ 支持的平台
+### ✅ 全平台支持
 
-Zvec 支持 **Linux、macOS、Windows**
-等主流平台，完整兼容性信息请参阅[全平台支持文档](https://zvec.org/zh/docs/db/platforms/)。
+**Linux · macOS · Windows · Android · iOS**
+
+Zvec 提供全平台支持，覆盖服务器、桌面和移动设备。<br>
+如需了解更多细节，请查阅[平台支持文档](https://zvec.org/zh/docs/db/platforms/)。
 
 ### 🛠️ 源码构建
 
 如需从源码构建 Zvec，请参考[源码构建指南](https://zvec.org/zh/docs/db/build/)。
 
-## ⚡ 一分钟上手
+## ⚡ 一分钟上手（Python）
 
 ```python
 import zvec

@@ -74,16 +74,18 @@ Searching code or documents? Try **[zvec-grep](https://github.com/zvec-ai/zvec-g
 
 Prefer a visual tool? Try **[Zvec Studio](https://github.com/zvec-ai/zvec-studio)** to browse data and debug queries — no code required.
 
-### ✅ Supported Platforms
+### ✅ Cross-Platform Support
 
-Zvec supports all major platforms, including **Linux, macOS, and Windows**; see
-the [platform support documentation](https://zvec.org/en/docs/db/platforms/) for details.
+**Linux · macOS · Windows · Android · iOS**
+
+Zvec supports all major platforms — from servers and desktops to mobile devices.<br>
+For more details, please see the [platform support documentation](https://zvec.org/en/docs/db/platforms/).
 
 ### 🛠️ Building from Source
 
 If you prefer to build Zvec from source, please check the [Building from Source](https://zvec.org/en/docs/db/build/) guide.
 
-## ⚡ One-Minute Example
+## ⚡ One-Minute Python Example
 
 ```python
 import zvec
