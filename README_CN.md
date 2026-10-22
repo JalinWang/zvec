@@ -13,13 +13,16 @@
   <a href="https://codecov.io/github/alibaba/zvec"><img src="https://codecov.io/github/alibaba/zvec/graph/badge.svg?token=O81CT45B66" alt="代码覆盖率"/></a>
   <a href="https://github.com/alibaba/zvec/actions/workflows/01-ci-pipeline.yml"><img src="https://github.com/alibaba/zvec/actions/workflows/01-ci-pipeline.yml/badge.svg?branch=main" alt="Main"/></a>
   <a href="https://github.com/alibaba/zvec/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="许可证"/></a>
-  <a href="https://pypi.org/project/zvec/"><img src="https://img.shields.io/pypi/v/zvec.svg" alt="PyPI 版本"/></a>
-  <a href="https://pypi.org/project/zvec/"><img src="https://img.shields.io/badge/python-3.10%20~%203.14-blue.svg" alt="Python 版本"/></a>
-  <a href="https://www.npmjs.com/package/@zvec/zvec"><img src="https://img.shields.io/npm/v/@zvec/zvec.svg" alt="npm 版本"/></a>
-  <a href="https://pkg.go.dev/github.com/zvec-ai/zvec-go"><img src="https://pkg.go.dev/badge/github.com/zvec-ai/zvec-go.svg" alt="Go 文档"/></a>
-  <a href="https://crates.io/crates/zvec-rust"><img src="https://img.shields.io/crates/v/zvec-rust.svg" alt="crates.io 版本"/></a>
-  <a href="https://central.sonatype.com/artifact/org.zvec/zvec-java"><img src="https://img.shields.io/maven-central/v/org.zvec/zvec-java.svg?label=Maven%20Central" alt="Maven Central 版本"/></a>
-  <a href="https://pub.dev/packages/zvec"><img src="https://img.shields.io/pub/v/zvec.svg" alt="pub.dev 版本"/></a>
+  <a href="https://pypi.org/project/zvec/"><img src="https://img.shields.io/badge/Python%20support-3.10%20~%203.14-blue.svg" alt="Python 支持版本"/></a>
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/zvec/"><img src="https://img.shields.io/pypi/v/zvec.svg?label=Python" alt="Python SDK 版本"/></a>
+  <a href="https://www.npmjs.com/package/@zvec/zvec"><img src="https://img.shields.io/npm/v/@zvec/zvec.svg?label=Node.js" alt="Node.js SDK 版本"/></a>
+  <a href="https://pkg.go.dev/github.com/zvec-ai/zvec-go"><img src="https://img.shields.io/badge/Go-reference-00ADD8.svg" alt="Go SDK 文档"/></a>
+  <a href="https://crates.io/crates/zvec-rust"><img src="https://img.shields.io/crates/v/zvec-rust.svg?label=Rust" alt="Rust SDK 版本"/></a>
+  <a href="https://central.sonatype.com/artifact/org.zvec/zvec-java"><img src="https://img.shields.io/maven-central/v/org.zvec/zvec-java.svg?label=Java" alt="Java SDK 版本"/></a>
+  <a href="https://pub.dev/packages/zvec"><img src="https://img.shields.io/pub/v/zvec.svg?label=Dart%2FFlutter" alt="Dart/Flutter SDK 版本"/></a>
 </p>
 
 <p align="center">
