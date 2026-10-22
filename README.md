@@ -16,6 +16,10 @@
   <a href="https://pypi.org/project/zvec/"><img src="https://img.shields.io/pypi/v/zvec.svg" alt="PyPI Release"/></a>
   <a href="https://pypi.org/project/zvec/"><img src="https://img.shields.io/badge/python-3.10%20~%203.14-blue.svg" alt="Python Versions"/></a>
   <a href="https://www.npmjs.com/package/@zvec/zvec"><img src="https://img.shields.io/npm/v/@zvec/zvec.svg" alt="npm Release"/></a>
+  <a href="https://pkg.go.dev/github.com/zvec-ai/zvec-go"><img src="https://pkg.go.dev/badge/github.com/zvec-ai/zvec-go.svg" alt="Go Reference"/></a>
+  <a href="https://crates.io/crates/zvec-rust"><img src="https://img.shields.io/crates/v/zvec-rust.svg" alt="crates.io Release"/></a>
+  <a href="https://central.sonatype.com/artifact/org.zvec/zvec-java"><img src="https://img.shields.io/maven-central/v/org.zvec/zvec-java.svg?label=Maven%20Central" alt="Maven Central Release"/></a>
+  <a href="https://pub.dev/packages/zvec"><img src="https://img.shields.io/pub/v/zvec.svg" alt="pub.dev Release"/></a>
 </p>
 
 <p align="center">
@@ -68,6 +72,7 @@ Zvec offers official SDKs across multiple languages:
 - **[Node.js](https://www.npmjs.com/package/@zvec/zvec)**: `npm install @zvec/zvec`
 - **[Go](https://github.com/zvec-ai/zvec-go)**: High-performance Go bindings.
 - **[Rust](https://crates.io/crates/zvec-rust)**: `cargo add zvec-rust`
+- **[Java](https://github.com/zvec-ai/zvec-java)**: Available on Maven Central as `org.zvec:zvec-java` (requires Java 8+).
 - **[Dart/Flutter](https://pub.dev/packages/zvec)**: `flutter pub add zvec`
 
 Searching code or documents? Try **[zvec-grep](https://github.com/zvec-ai/zvec-grep)** (`zg`) — a local-first search CLI that unifies ripgrep, BM25, and vector search, built for humans and AI agents.

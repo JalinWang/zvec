@@ -16,6 +16,10 @@
   <a href="https://pypi.org/project/zvec/"><img src="https://img.shields.io/pypi/v/zvec.svg" alt="PyPI 版本"/></a>
   <a href="https://pypi.org/project/zvec/"><img src="https://img.shields.io/badge/python-3.10%20~%203.14-blue.svg" alt="Python 版本"/></a>
   <a href="https://www.npmjs.com/package/@zvec/zvec"><img src="https://img.shields.io/npm/v/@zvec/zvec.svg" alt="npm 版本"/></a>
+  <a href="https://pkg.go.dev/github.com/zvec-ai/zvec-go"><img src="https://pkg.go.dev/badge/github.com/zvec-ai/zvec-go.svg" alt="Go 文档"/></a>
+  <a href="https://crates.io/crates/zvec-rust"><img src="https://img.shields.io/crates/v/zvec-rust.svg" alt="crates.io 版本"/></a>
+  <a href="https://central.sonatype.com/artifact/org.zvec/zvec-java"><img src="https://img.shields.io/maven-central/v/org.zvec/zvec-java.svg?label=Maven%20Central" alt="Maven Central 版本"/></a>
+  <a href="https://pub.dev/packages/zvec"><img src="https://img.shields.io/pub/v/zvec.svg" alt="pub.dev 版本"/></a>
 </p>
 
 <p align="center">
@@ -71,6 +75,7 @@ Zvec 提供多语言官方 SDK：
 - **[Node.js](https://www.npmjs.com/package/@zvec/zvec)**：`npm install @zvec/zvec`
 - **[Go](https://github.com/zvec-ai/zvec-go)**：高性能的 Go 绑定。
 - **[Rust](https://crates.io/crates/zvec-rust)**：`cargo add zvec-rust`
+- **[Java](https://github.com/zvec-ai/zvec-java)**：通过 Maven Central 引入 `org.zvec:zvec-java`（需 Java 8+）。
 - **[Dart/Flutter](https://pub.dev/packages/zvec)**：`flutter pub add zvec`
 
 想搜索代码或文档？试试 **[zvec-grep](https://github.com/zvec-ai/zvec-grep)**（`zg`）— 本地优先的搜索 CLI，统一 ripgrep、BM25 与向量检索，为人类与 AI Agent 而设计。
