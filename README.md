@@ -13,16 +13,7 @@
   <a href="https://codecov.io/github/alibaba/zvec"><img src="https://codecov.io/github/alibaba/zvec/graph/badge.svg?token=O81CT45B66" alt="Code Coverage"/></a>
   <a href="https://github.com/alibaba/zvec/actions/workflows/01-ci-pipeline.yml"><img src="https://github.com/alibaba/zvec/actions/workflows/01-ci-pipeline.yml/badge.svg?branch=main" alt="Main"/></a>
   <a href="https://github.com/alibaba/zvec/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"/></a>
-  <a href="https://pypi.org/project/zvec/"><img src="https://img.shields.io/badge/Python%20support-3.10%20~%203.14-blue.svg" alt="Python Versions"/></a>
-</p>
-
-<p align="center">
-  <a href="https://pypi.org/project/zvec/"><img src="https://img.shields.io/pypi/v/zvec.svg?label=Python" alt="Python SDK Release"/></a>
-  <a href="https://www.npmjs.com/package/@zvec/zvec"><img src="https://img.shields.io/npm/v/@zvec/zvec.svg?label=Node.js" alt="Node.js SDK Release"/></a>
-  <a href="https://pkg.go.dev/github.com/zvec-ai/zvec-go"><img src="https://img.shields.io/badge/Go-reference-00ADD8.svg" alt="Go SDK Reference"/></a>
-  <a href="https://crates.io/crates/zvec-rust"><img src="https://img.shields.io/crates/v/zvec-rust.svg?label=Rust" alt="Rust SDK Release"/></a>
-  <a href="https://central.sonatype.com/artifact/org.zvec/zvec-java"><img src="https://img.shields.io/maven-central/v/org.zvec/zvec-java.svg?label=Java" alt="Java SDK Release"/></a>
-  <a href="https://pub.dev/packages/zvec"><img src="https://img.shields.io/pub/v/zvec.svg?label=Dart%2FFlutter" alt="Dart/Flutter SDK Release"/></a>
+  <a href="https://github.com/alibaba/zvec/releases/latest"><img src="https://img.shields.io/github/v/release/alibaba/zvec?label=release" alt="Latest Release"/></a>
 </p>
 
 <p align="center">
