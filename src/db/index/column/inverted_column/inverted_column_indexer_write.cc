@@ -247,15 +247,31 @@ Status InvertedColumnIndexer::generate_statistical_indexes() {
     return Status::PermissionDenied();
   }
 
-  if (!ctx_.reset_cf(cf_name_ranges()).ok()) {
-    // Reset the range index in case it is corrupted
-    LOG_ERROR("Failed to reset range index");
-    return Status::InternalError();
-  }
   cf_ranges_ = ctx_.get_cf(cf_name_ranges());
   if (!cf_ranges_) {
     LOG_ERROR("Failed to get column families for %s", ID().c_str());
     return Status::InternalError();
+  }
+
+  // A new segment's range CF is empty. Avoid dropping and recreating it,
+  // but still clear partial statistics left by an interrupted seal.
+  bool empty_ranges = false;
+  {
+    std::unique_ptr<rocksdb::Iterator> iter(
+        ctx_.db_->NewIterator(ctx_.read_opts_, cf_ranges_));
+    iter->SeekToFirst();
+    empty_ranges = !iter->Valid() && iter->status().ok();
+  }
+  if (!empty_ranges) {
+    if (!ctx_.reset_cf(cf_name_ranges()).ok()) {
+      LOG_ERROR("Failed to reset range index");
+      return Status::InternalError();
+    }
+    cf_ranges_ = ctx_.get_cf(cf_name_ranges());
+    if (!cf_ranges_) {
+      LOG_ERROR("Failed to get column families for %s", ID().c_str());
+      return Status::InternalError();
+    }
   }
 
   // TODO: make them configurable
@@ -264,6 +280,10 @@ Status InvertedColumnIndexer::generate_statistical_indexes() {
 
   const uint32_t num_doc_per_range_slot = (max_id_ + 1) / num_range_slot;
   const uint32_t num_doc_per_cdf_slot = (max_id_ + 1) / num_cdf_slot;
+  // With at most one document per slot, every nonempty term gets its own
+  // range. These ranges would all be discarded below. Keep generating the
+  // CDF, which is also used to estimate query selectivity for small segments.
+  const bool build_ranges = num_doc_per_range_slot > 1;
 
   // Iterator for terms in the inverted index
   auto iter_term = ctx_.db_->NewIterator(ctx_.read_opts_, cf_terms_);
@@ -348,20 +368,22 @@ Status InvertedColumnIndexer::generate_statistical_indexes() {
     doc_count += term_doc_count;
 
     // Range
-    if (!range_slot_initialized) {
-      range_slot_initialized = true;
-      range_slot_doc_count = 0;
-      range_begin_key = iter_term->key().ToString();
-      roaring_bitmap_clear(bitmap_range);
-    }
-    range_end_key = iter_term->key().ToString();
-    range_slot_doc_count += term_doc_count;
-    roaring_bitmap_or_inplace(bitmap_range, bitmap_cur);
-    if (range_slot_doc_count >= num_doc_per_range_slot) {
-      if (create_range_slot().ok()) {
-        range_slot_initialized = false;
-      } else {
-        return Status::InternalError();
+    if (build_ranges) {
+      if (!range_slot_initialized) {
+        range_slot_initialized = true;
+        range_slot_doc_count = 0;
+        range_begin_key = iter_term->key().ToString();
+        roaring_bitmap_clear(bitmap_range);
+      }
+      range_end_key = iter_term->key().ToString();
+      range_slot_doc_count += term_doc_count;
+      roaring_bitmap_or_inplace(bitmap_range, bitmap_cur);
+      if (range_slot_doc_count >= num_doc_per_range_slot) {
+        if (create_range_slot().ok()) {
+          range_slot_initialized = false;
+        } else {
+          return Status::InternalError();
+        }
       }
     }
 
@@ -388,7 +410,7 @@ Status InvertedColumnIndexer::generate_statistical_indexes() {
       return Status::InternalError();
     }
   }
-  if (num_range_slot_created >= term_count) {
+  if (num_range_slot_created > 0 && num_range_slot_created >= term_count) {
     LOG_DEBUG(
         "Drop range index in %s, range_slot_count[%ld] vs term_count[%ld].",
         ID().c_str(), num_range_slot_created, term_count);

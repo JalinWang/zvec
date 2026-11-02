@@ -60,34 +60,35 @@ Status RocksdbContext::create(Args args) {
   }
   db_.reset(db);
 
-  bool has_default = false;
+  std::vector<rocksdb::ColumnFamilyDescriptor> cf_descriptors;
   for (const auto &column_name : args.column_names) {
     if (column_name == rocksdb::kDefaultColumnFamilyName) {
-      cf_handles_.push_back(db->DefaultColumnFamily());
-      has_default = true;
       continue;
     }
-    rocksdb::ColumnFamilyHandle *cf_handle{nullptr};
     rocksdb::ColumnFamilyOptions cf_options(create_opts_);
     auto it = per_cf_merge_ops_.find(column_name);
     if (it != per_cf_merge_ops_.end() && it->second) {
       cf_options.merge_operator = it->second;
     }
-    s = db->CreateColumnFamily(cf_options, column_name, &cf_handle);
+    cf_descriptors.emplace_back(column_name, std::move(cf_options));
+  }
+  // RocksDB persists OPTIONS once for the batch, rather than once per CF.
+  // The descriptor overload preserves each CF's merge operator.
+  if (!cf_descriptors.empty()) {
+    s = db->CreateColumnFamilies(cf_descriptors, &cf_handles_);
     if (!s.ok()) {
-      LOG_ERROR("Failed to create cf[%s] in RocksDB[%s], code[%d], reason[%s]",
-                column_name.c_str(), args.db_path.c_str(), s.code(),
-                s.ToString().c_str());
+      LOG_ERROR(
+          "Failed to create column families in RocksDB[%s], code[%d], "
+          "reason[%s]",
+          args.db_path.c_str(), s.code(), s.ToString().c_str());
+      // A failed batch can still return handles for successfully created CFs.
       delete_cf_handles();
       db->Close();
       db_.reset();
       return Status::InternalError();
     }
-    cf_handles_.push_back(cf_handle);
   }
-  if (!has_default) {
-    cf_handles_.push_back(db->DefaultColumnFamily());
-  }
+  cf_handles_.push_back(db->DefaultColumnFamily());
 
   read_only_ = false;
   write_opts_.disableWAL = true;
