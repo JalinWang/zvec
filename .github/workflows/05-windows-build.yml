@@ -1,4 +1,4 @@
-name: Windows Build
+name: Windows VS2026 cold-cache benchmark
 
 on:
   workflow_call:
@@ -12,28 +12,22 @@ jobs:
   build-and-test-windows:
     name: Build & Test (${{ matrix.platform }})
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 180
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: windows-2022
-            vs_version: '17.0'
-            msvc_arch: x64
-            python_version: '3.10'
           - platform: windows-2025-vs2026
             vs_version: '18.0'
             msvc_arch: x64
             python_version: '3.10'
-          # Windows ARM64: Python 3.10 has no official ARM64 installer;
-          # 3.11 is the first CPython release with a Windows-on-ARM build.
-          - platform: windows-11-vs2026-arm
-            vs_version: '18.0'
-            msvc_arch: arm64
-            python_version: '3.11'
 
     env:
       SCCACHE_GHA_ENABLED: "true"
+      # A fresh namespace makes compiler-cache reads cold without deleting caches.
+      SCCACHE_GHA_VERSION: vs2026-cold-20261110-1bd5d1d6-01
+      SCCACHE_IDLE_TIMEOUT: "0"
       CMAKE_GENERATOR: Ninja
       NINJA_STATUS: '[%f/%t %r running %es] '
 
@@ -131,7 +125,10 @@ jobs:
       - name: Show sccache statistics after pip install
         if: always()
         continue-on-error: true
-        run: sccache --show-stats
+        run: |
+          New-Item -ItemType Directory -Force benchmark-artifacts | Out-Null
+          sccache --show-stats
+          sccache --show-stats --stats-format json | Out-File benchmark-artifacts/sccache-source.json -Encoding utf8
         shell: powershell
 
       - name: Check main and external build generators
@@ -156,10 +153,32 @@ jobs:
             }
           }
 
+      - name: Compile C++ tests
+        run: |
+          sccache --zero-stats
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # cc_test registers each test under its executable target name.
+          ctest --test-dir build --show-only=json-v1 | Out-File benchmark-artifacts/ctest-inventory.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $inventory = Get-Content benchmark-artifacts/ctest-inventory.json -Raw | ConvertFrom-Json
+          $targets = @($inventory.tests | ForEach-Object { $_.name })
+          if ($targets.Count -eq 0) { throw "No C++ test targets found" }
+          Write-Host "Compiling $($targets.Count) tests with $env:CMAKE_BUILD_PARALLEL_LEVEL build jobs"
+          cmake --build build --config Release --target @targets
+        shell: powershell
+
+      - name: Show sccache statistics after test compilation
+        if: always()
+        continue-on-error: true
+        run: |
+          sccache --show-stats
+          sccache --show-stats --stats-format json | Out-File benchmark-artifacts/sccache-test-compile.json -Encoding utf8
+        shell: powershell
+
       - name: Run C++ Tests
         run: |
-          cd "$env:GITHUB_WORKSPACE\build"
-          cmake --build . --target unittest --config Release
+          $testJobs = [Math]::Max(1, [int]$env:NPROC - 1)
+          ctest --test-dir build --build-config Release --output-on-failure --parallel $testJobs
         shell: powershell
 
       - name: Show sccache statistics after tests
@@ -171,7 +190,7 @@ jobs:
       - name: Run Python Tests
         run: |
           cd "$env:GITHUB_WORKSPACE"
-          python -m pytest python/tests/ --basetemp=./.pytest_tmp
+          python -m pytest python/tests/ --basetemp=./.pytest_tmp --junitxml=benchmark-artifacts/pytest.xml
         shell: powershell
 
       - name: Run C++ Examples
@@ -229,3 +248,16 @@ jobs:
         continue-on-error: true
         run: sccache --show-stats
         shell: powershell
+
+      - name: Upload benchmark diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vs2026-cold-cache-diagnostics
+          include-hidden-files: true
+          path: |
+            benchmark-artifacts/
+            build/.ninja_log
+            build/Testing/Temporary/LastTest.log
+            .pytest_tmp/**/LOG
+            .pytest_tmp/**/LOG.old.*
